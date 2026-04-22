@@ -1,0 +1,46 @@
+# xcodegen project spec.
+# Build with: `brew install xcodegen && cd ios/TapPair && xcodegen generate`
+# Then open `TapPair.xcodeproj` in Xcode and run on a device or simulator.
+
+name: TapPair
+options:
+  bundleIdPrefix: com.tappair
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: en
+
+packages:
+  TapPairCore:
+    path: .
+
+targets:
+  TapPair:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/TapPairApp
+    dependencies:
+      - package: TapPairCore
+        product: TapPairCore
+    info:
+      path: Sources/TapPairApp/Info.plist
+      properties:
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        NSBluetoothAlwaysUsageDescription: "TapPair uses Bluetooth to detect when your phone touches another player's phone."
+        NSMotionUsageDescription: "TapPair uses motion to recognize the tap of two phones touching."
+        NSLocalNetworkUsageDescription: "TapPair connects to the game server on your local network during dev builds."
+        NSNearbyInteractionUsageDescription: "TapPair uses Nearby Interaction (UWB) to precisely confirm when phones are touching."
+        UIBackgroundModes:
+          - bluetooth-central
+          - bluetooth-peripheral
+        UIRequiredDeviceCapabilities:
+          - armv7
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: NO
