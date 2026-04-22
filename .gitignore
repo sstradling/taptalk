@@ -1,0 +1,17 @@
+# Server
+server/node_modules/
+server/dist/
+server/.env
+server/*.log
+
+# iOS / Swift
+ios/TapPair/.build/
+ios/TapPair/.swiftpm/
+ios/TapPair/Package.resolved
+ios/TapPair/TapPair.xcodeproj/
+ios/TapPair/DerivedData/
+ios/TapPair/*.xcworkspace/
+
+# Misc
+.DS_Store
+*.swp
