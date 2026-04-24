@@ -26,6 +26,7 @@ public final class AppViewModel {
     public var state: GameState = GameState()
     public var serverURL: URL = URL(string: "ws://127.0.0.1:8080")!
     public var displayName: String = "Player"
+    public var debugEvents: [String] = []
     public var uwbEnabled: Bool = true {
         didSet { rebuildProvider() }
     }
@@ -278,7 +279,12 @@ public final class AppViewModel {
     }
 
     private func logDebug(_ message: String) {
-        print("[TapPair] \(message)")
+        let line = "[TapPair] \(message)"
+        print(line)
+        debugEvents.insert(message, at: 0)
+        if debugEvents.count > 8 {
+            debugEvents.removeLast(debugEvents.count - 8)
+        }
     }
 }
 

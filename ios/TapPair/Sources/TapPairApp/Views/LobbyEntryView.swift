@@ -71,6 +71,15 @@ struct LobbyEntryView: View {
                     Task { await vm.connectAndHello() }
                 }
             }
+            if !vm.debugEvents.isEmpty {
+                DisclosureGroup("Recent events") {
+                    ForEach(vm.debugEvents.reversed(), id: \.self) { event in
+                        Text(event)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
     }
 
