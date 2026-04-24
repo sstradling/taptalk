@@ -16,6 +16,7 @@ struct LobbyEntryView: View {
     var body: some View {
         @Bindable var vmBinding = vm
         Form {
+            connectionSection
             Section("You") {
                 TextField("Display name", text: $vmBinding.displayName)
                     .textInputAutocapitalization(.words)
@@ -25,6 +26,7 @@ struct LobbyEntryView: View {
                     Button(label(for: mode)) {
                         Task { await vm.createRoom(mode: mode) }
                     }
+                    .disabled(!vm.canSendUserActions)
                 }
             }
             Section("Or join") {
@@ -34,7 +36,7 @@ struct LobbyEntryView: View {
                 Button("Join room") {
                     Task { await vm.joinRoom(code: roomCode) }
                 }
-                .disabled(roomCode.count != 4)
+                .disabled(roomCode.count != 4 || !vm.canSendUserActions)
             }
             if let err = vm.state.lastError {
                 Section { Text(err).foregroundStyle(.red) }
@@ -47,6 +49,47 @@ struct LobbyEntryView: View {
             }
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
+    }
+
+    @ViewBuilder
+    private var connectionSection: some View {
+        Section("Server") {
+            HStack {
+                Circle()
+                    .fill(connectionColor)
+                    .frame(width: 10, height: 10)
+                Text(connectionLabel)
+                Spacer()
+                Text(vm.serverURL.absoluteString)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            if !vm.canSendUserActions {
+                Button("Reconnect") {
+                    Task { await vm.connectAndHello() }
+                }
+            }
+        }
+    }
+
+    private var connectionLabel: String {
+        switch vm.state.connection {
+        case .disconnected: "Disconnected"
+        case .connecting: "Connecting…"
+        case .connected: "Connected (handshaking)"
+        case .helloed: "Connected"
+        }
+    }
+
+    private var connectionColor: Color {
+        switch vm.state.connection {
+        case .disconnected: .red
+        case .connecting: .orange
+        case .connected: .yellow
+        case .helloed: .green
+        }
     }
 
     private func label(for mode: GameMode) -> String {
