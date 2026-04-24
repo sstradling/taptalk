@@ -30,8 +30,7 @@ public final class AppViewModel {
     }
 
     private let store = GameStore()
-    private let transport = URLSessionWebSocketTransport()
-    private lazy var client: WebSocketClient = WebSocketClient(transport: transport)
+    private let client: WebSocketClient
     private var provider: (any PairingProvider)?
     private var coalescer: EvidenceCoalescer?
     private var inboxTask: Task<Void, Never>?
@@ -40,7 +39,9 @@ public final class AppViewModel {
     private var activeProviderRoundId: Int?
     private var activeSelfToken: String?
 
-    public init() {}
+    public init() {
+        self.client = WebSocketClient(transport: URLSessionWebSocketTransport())
+    }
 
     public func start() async {
         // Wire store -> Observable state.
