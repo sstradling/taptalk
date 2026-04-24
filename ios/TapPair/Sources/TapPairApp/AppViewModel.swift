@@ -150,7 +150,9 @@ public final class AppViewModel {
     }
 
     public func leaveRoom() async {
-        await sendOrSurface(.leaveRoom)
+        if await sendOrSurface(.leaveRoom) {
+            await leaveRoomLocally()
+        }
     }
 
     /// Send a client message and surface any error to the UI. Returns true on
@@ -237,6 +239,22 @@ public final class AppViewModel {
         default:
             break
         }
+    }
+
+    private func leaveRoomLocally() async {
+        await provider?.stop()
+        activeProviderRoundId = nil
+        activeSelfToken = nil
+        await coalescer?.reset()
+        await store.mutate { state in
+            state.room = nil
+            state.lastAssignment = nil
+            state.lastConfirmation = nil
+            state.lastResolution = nil
+            state.lastError = nil
+        }
+        self.state = await store.state
+        logDebug("left room locally")
     }
 
     private func startProviderForCurrentRoundIfNeeded() async {
