@@ -23,7 +23,7 @@ import TapPairCore
 public final class AppViewModel {
 
     public var state: GameState = GameState()
-    public var serverURL: URL = URL(string: "ws://127.0.0.1:8080")!
+    public var serverURL: URL = URL(string: "ws://192.168.86.24:8080")!
     public var displayName: String = "Player"
     public var uwbEnabled: Bool = true {
         didSet { rebuildProvider() }
