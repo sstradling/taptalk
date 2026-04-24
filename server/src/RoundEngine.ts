@@ -194,11 +194,13 @@ export class RoundEngine {
    */
   submitEvidence(
     playerId: string,
+    roundId: number,
+    evidencePhase: "register" | "confirm",
     selfToken: string,
     channels: DeviceEvidence["channels"],
     now: number
   ): EngineAction[] {
-    if (this.phase !== "registering" && this.phase !== "finding") {
+    if (roundId !== this.currentRoundId || !this.acceptsEvidencePhase(evidencePhase)) {
       return [
         {
           kind: "private_pair_rejected",
@@ -212,6 +214,16 @@ export class RoundEngine {
     this.evidenceBuffer.push({ playerId, selfToken, receivedAtMs: now, channels });
     this.pruneOldEvidence(now);
     return this.tryMatch(now);
+  }
+
+  private acceptsEvidencePhase(evidencePhase: "register" | "confirm"): boolean {
+    if (this.phase === "registering") {
+      // The prototype deals cues at round start, so we allow confirm evidence
+      // during the short registering window. A later registration UX can make
+      // this stricter once the phases are visually distinct in the client.
+      return evidencePhase === "register" || evidencePhase === "confirm";
+    }
+    return this.phase === "finding" && evidencePhase === "confirm";
   }
 
   // ---- internal ----------------------------------------------------------

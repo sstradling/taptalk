@@ -8,9 +8,9 @@
 // ------------
 //   * BLE half:
 //       - When `start(roundId:selfToken:)` is called, advertise a custom
-//         `serviceUUID` with `selfToken` (8 bytes) packed into the manufacturer
-//         data field. iOS overflow-area limitations don't bite us because we
-//         only run while the app is foregrounded.
+//         `serviceUUID` and the exact 16-char round token as the local name.
+//         iOS foreground advertisements include the local name in the normal
+//         advertisement/scan-response path, which is enough for this prototype.
 //       - Concurrently scan for the same `serviceUUID`. For every discovery
 //         with RSSI > -55 dBm, emit a `.ble` EvidenceChannel with the peer's
 //         token decoded from their advertisement data.
@@ -43,7 +43,7 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
     public let evidence: AsyncStream<EvidenceChannel>
     private let continuation: AsyncStream<EvidenceChannel>.Continuation
 
-    private static let serviceUUID = CBUUID(string: "T4P9A1A0-0000-4000-8000-000000000001")
+    private static let serviceUUID = CBUUID(string: "A4F9A1A0-0000-4000-8000-000000000001")
 
     private let central: CBCentralManager
     private let peripheral: CBPeripheralManager
@@ -87,7 +87,7 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
         if peripheral.isAdvertising { peripheral.stopAdvertising() }
         peripheral.startAdvertising([
             CBAdvertisementDataServiceUUIDsKey: [Self.serviceUUID],
-            CBAdvertisementDataLocalNameKey: "TP-" + currentSelfToken.prefix(6),
+            CBAdvertisementDataLocalNameKey: currentSelfToken,
         ])
     }
 
@@ -139,8 +139,8 @@ extension BleBumpPairingProvider: CBCentralManagerDelegate {
         let rssi = RSSI.doubleValue
         guard rssi > -55 else { return }
         let name = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name ?? ""
-        let peerToken = name.hasPrefix("TP-") ? String(name.dropFirst(3)) : name
-        guard !peerToken.isEmpty else { return }
+        let peerToken = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard peerToken.count == 16 else { return }
         continuation.yield(.init(
             kind: .ble,
             observedAtMs: Self.nowMs(),

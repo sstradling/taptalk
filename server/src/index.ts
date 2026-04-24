@@ -264,6 +264,8 @@ export function createServer(port: number = PORT): { wss: WebSocketServer; lobby
         if (!where) return;
         const actions = where.room.engine.submitEvidence(
           where.playerId,
+          parsed.roundId,
+          parsed.phase,
           parsed.selfToken,
           parsed.channels,
           Date.now()

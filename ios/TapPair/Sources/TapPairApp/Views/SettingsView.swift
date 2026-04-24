@@ -2,11 +2,9 @@
 //
 // Settings sheet. Hosts the user-facing UWB toggle the prompt asked for.
 //
-// The default for the toggle is ON when the device's NearbyInteraction
-// capabilities report `supportsPreciseDistanceMeasurement == true`. Turning
-// it OFF forces the BLE+bump path even on UWB-capable devices, which is
-// useful for debugging cross-device matching against an SE-2-equivalent
-// configuration.
+// The toggle is intentionally disabled in this phase-0 prototype. The UI still
+// reports hardware capability so testers can verify whether a device would be
+// eligible once PLAN.md phase 4 adds server-relayed NIDiscoveryToken exchange.
 
 #if canImport(SwiftUI) && canImport(UIKit)
 import SwiftUI
@@ -30,6 +28,13 @@ struct SettingsView: View {
         #endif
     }
 
+    private var uwbPrototypeEnabled: Bool {
+        // The UWB UI remains visible so testers know whether their hardware is
+        // capable, but active NearbyInteraction pairing is gated until the
+        // server relays NIDiscoveryToken values (PLAN.md phase 4).
+        false
+    }
+
     var body: some View {
         @Bindable var vmBinding = vm
         NavigationStack {
@@ -42,12 +47,12 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Use UWB precise pairing")
                             Text(uwbDeviceCapable
-                                 ? "Available on this device (iPhone 11+)."
+                                 ? "Hardware available; server token relay is not implemented yet."
                                  : "Not available on this device. BLE + bump only.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                    .disabled(!uwbDeviceCapable)
+                    .disabled(!uwbDeviceCapable || !uwbPrototypeEnabled)
                     Text("Default pairing uses BLE + accelerometer bump and works on every iPhone, including the iPhone SE (2nd gen). UWB, when available, makes the tap-to-confirm crisper.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }

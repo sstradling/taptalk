@@ -48,11 +48,11 @@ describe("RoundEngine", () => {
     e.addPlayer({ playerId: "p2", displayName: "Bob" });
     e.startRound(1000);
 
-    const a1 = e.submitEvidence("p1", "tA", uwbHit("tB"), 2000);
+    const a1 = e.submitEvidence("p1", e.currentRoundId, "confirm", "tA", uwbHit("tB"), 2000);
     e.setSelfToken("p2", "tB");
     e.setSelfToken("p1", "tA");
 
-    const a2 = e.submitEvidence("p2", "tB", [], 2050);
+    const a2 = e.submitEvidence("p2", e.currentRoundId, "confirm", "tB", [], 2050);
     const all = [...a1, ...a2];
 
     const confirmed = all.find((a) => a.kind === "broadcast_pair_confirmed") as Extract<EngineAction, { kind: "broadcast_pair_confirmed" }> | undefined;
@@ -84,7 +84,7 @@ describe("RoundEngine", () => {
     e.setSelfToken(wrong, wrongTok);
     e.setSelfToken("p1", "t_p1");
 
-    const actions = e.submitEvidence("p1", "t_p1", uwbHit(wrongTok), 2000);
+    const actions = e.submitEvidence("p1", e.currentRoundId, "confirm", "t_p1", uwbHit(wrongTok), 2000);
     const rejected = actions.filter((a) => a.kind === "private_pair_rejected");
     assert.ok(rejected.length >= 1, "should produce at least one pair_rejected");
     const confirmed = actions.find((a) => a.kind === "broadcast_pair_confirmed");
@@ -96,7 +96,19 @@ describe("RoundEngine", () => {
     e.addPlayer({ playerId: "p1", displayName: "A" });
     e.addPlayer({ playerId: "p2", displayName: "B" });
     // No startRound: phase is still "lobby".
-    const actions = e.submitEvidence("p1", "tA", uwbHit("tB"), 2000);
+    const actions = e.submitEvidence("p1", 1, "confirm", "tA", uwbHit("tB"), 2000);
+    assert.equal(actions.length, 1);
+    assert.equal(actions[0]!.kind, "private_pair_rejected");
+  });
+
+  it("stale round evidence is rejected with phase_mismatch", () => {
+    const e = newEngine();
+    e.addPlayer({ playerId: "p1", displayName: "A" });
+    e.addPlayer({ playerId: "p2", displayName: "B" });
+    e.startRound(1000);
+
+    const actions = e.submitEvidence("p1", e.currentRoundId + 1, "confirm", "tA", uwbHit("tB"), 2000);
+
     assert.equal(actions.length, 1);
     assert.equal(actions[0]!.kind, "private_pair_rejected");
   });

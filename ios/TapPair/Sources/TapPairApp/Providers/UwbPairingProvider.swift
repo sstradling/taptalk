@@ -1,6 +1,8 @@
 // Providers/UwbPairingProvider.swift
 //
-// UWB pairing accelerator (NearbyInteraction). Available on iPhone 11+.
+// UWB pairing accelerator scaffold (NearbyInteraction). Hardware is available
+// on iPhone 11+, but active ranging is disabled in this prototype until the
+// WebSocket protocol relays `NIDiscoveryToken` values between assigned peers.
 //
 // Why this is *additive*, not a replacement:
 //   * Server scoring (spec/PROTOCOL.md §7) gives UWB-close a weight of 4.0
@@ -13,17 +15,9 @@
 //
 // Peer discovery-token exchange:
 //   NearbyInteraction needs each peer to know the other's `NIDiscoveryToken`
-//   before ranging starts. We do this through the server: each device
-//   serializes its token, sends it inside a `pair_evidence` channel
-//   (kind: "uwb", peerToken: <our base64 token>) so the server can relay it
-//   to the assigned partner via `pair_assigned`. The server treats the
-//   token as opaque bytes — it does not parse it.
-//
-//   For this prototype we keep the wire interaction minimal: each device
-//   advertises its `NIDiscoveryToken` over BLE (in the same advertisement
-//   used by BleBumpPairingProvider, with an extended data field). A real
-//   implementation would prefer the server-relay path because it works even
-//   when BLE is heavily congested.
+//   before ranging starts. PLAN.md phase 4 adds an explicit server-relay
+//   message for those opaque bytes. Until then this provider reports
+//   `isAvailable == false` so the app never emits misleading UWB evidence.
 
 #if canImport(NearbyInteraction)
 import Foundation
@@ -36,11 +30,13 @@ public final class UwbPairingProvider: NSObject, PairingProvider, @unchecked Sen
     public let capability: Capability = .uwb
 
     public var isAvailable: Bool {
-        if #available(iOS 16.0, *) {
-            return NISession.deviceCapabilities.supportsPreciseDistanceMeasurement
-        } else {
-            return NISession.isSupported
-        }
+        // NearbyInteraction requires a peer NIDiscoveryToken exchange before
+        // any ranging session can run. The v1 wire protocol intentionally has
+        // no server relay for those opaque tokens yet, so expose this provider
+        // as unavailable for active composition. Keeping the scaffold here lets
+        // the settings UI explain UWB capability without emitting misleading
+        // evidence.
+        false
     }
 
     public let evidence: AsyncStream<EvidenceChannel>

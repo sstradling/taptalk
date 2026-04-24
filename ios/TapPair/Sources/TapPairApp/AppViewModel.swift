@@ -15,6 +15,7 @@
 #if canImport(SwiftUI) && canImport(UIKit)
 import Foundation
 import SwiftUI
+import Security
 import TapPairCore
 
 @MainActor
@@ -34,7 +35,10 @@ public final class AppViewModel {
     private var provider: (any PairingProvider)?
     private var coalescer: EvidenceCoalescer?
     private var inboxTask: Task<Void, Never>?
+    private var providerPumpTask: Task<Void, Never>?
     private var subscription: UUID?
+    private var activeProviderRoundId: Int?
+    private var activeSelfToken: String?
 
     public init() {}
 
@@ -58,6 +62,9 @@ public final class AppViewModel {
         inboxTask = Task { [weak self] in
             for await msg in stream {
                 await self?.store.apply(msg)
+                await MainActor.run {
+                    self?.handleServerMessage(msg)
+                }
             }
         }
 
@@ -105,12 +112,15 @@ public final class AppViewModel {
 
     private func rebuildProvider() {
         Task { await provider?.stop() }
+        providerPumpTask?.cancel()
+        activeProviderRoundId = nil
+        activeSelfToken = nil
         var children: [any PairingProvider] = []
         #if canImport(CoreBluetooth) && canImport(CoreMotion)
         children.append(BleBumpPairingProvider())
         #endif
         #if canImport(NearbyInteraction)
-        if uwbEnabled, #available(iOS 14.0, *) {
+        if Self.uwbProviderCompositionEnabled, uwbEnabled, #available(iOS 14.0, *) {
             let uwb = UwbPairingProvider()
             if uwb.isAvailable { children.append(uwb) }
         }
@@ -120,8 +130,10 @@ public final class AppViewModel {
 
         let coalescer = EvidenceCoalescer { [weak self] batch in
             guard let self else { return }
-            let roundId = await MainActor.run { self.state.lastAssignment?.roundId ?? self.state.room?.currentRoundId ?? 0 }
-            let token = Self.persistentDeviceId() // simplified self-token
+            let (roundId, token) = await MainActor.run {
+                (self.state.lastAssignment?.roundId ?? self.state.room?.currentRoundId ?? 0,
+                 self.activeSelfToken ?? Self.generateRoundToken())
+            }
             try? await self.client.send(.pairEvidence(.init(
                 roundId: roundId,
                 phase: "confirm",
@@ -131,32 +143,103 @@ public final class AppViewModel {
         }
         self.coalescer = coalescer
 
-        Task { [weak self] in
+        providerPumpTask = Task { [weak self] in
             guard let self, let provider = self.provider else { return }
             for await ev in provider.evidence {
                 await coalescer.ingest(ev)
             }
         }
+        Task { await startProviderForCurrentRoundIfNeeded() }
+    }
+
+    private func handleServerMessage(_ message: ServerMessage) {
+        switch message {
+        case .roundStarted, .pairAssigned:
+            Task { await startProviderForCurrentRoundIfNeeded() }
+        case .roundResolved:
+            Task {
+                await provider?.stop()
+                activeProviderRoundId = nil
+                activeSelfToken = nil
+                await coalescer?.reset()
+            }
+        default:
+            break
+        }
+    }
+
+    private func startProviderForCurrentRoundIfNeeded() async {
+        let roundId = state.lastAssignment?.roundId ?? state.room?.currentRoundId ?? 0
+        guard roundId > 0, activeProviderRoundId != roundId, let provider else { return }
+        let token = Self.generateRoundToken()
+        activeProviderRoundId = roundId
+        activeSelfToken = token
+        do {
+            try await provider.start(roundId: roundId, selfToken: token)
+        } catch {
+            state.lastError = "Pairing start failed: \(error)"
+        }
     }
 
     private func currentCapabilities() -> [Capability] {
-        var caps: [Capability] = [.ble, .bump]
-        #if canImport(NearbyInteraction)
-        if #available(iOS 14.0, *), NISession.isSupported, uwbEnabled {
-            if #available(iOS 16.0, *), NISession.deviceCapabilities.supportsPreciseDistanceMeasurement {
-                caps.append(.uwb)
-            }
-        }
-        #endif
-        return caps
+        // UWB is intentionally not advertised yet: NearbyInteraction requires
+        // an assigned-partner discovery-token relay in the wire protocol. Until
+        // that exists, BLE+bump is the only active pairing implementation.
+        return [.ble, .bump]
     }
 
     private static func persistentDeviceId() -> String {
         let key = "tappair.deviceId"
-        if let s = UserDefaults.standard.string(forKey: key) { return s }
+        if let s = KeychainStringStore.read(service: key, account: "deviceId") { return s }
         let new = UUID().uuidString
-        UserDefaults.standard.set(new, forKey: key)
+        KeychainStringStore.write(new, service: key, account: "deviceId")
         return new
+    }
+
+    private static func generateRoundToken() -> String {
+        RoundToken.generate()
+    }
+
+    private static var uwbProviderCompositionEnabled: Bool {
+        // Flip this to true only after PLAN.md phase 4 adds server-relayed
+        // NIDiscoveryToken exchange. Keeping the code path compiled but gated
+        // prevents the Settings toggle from implying active UWB ranging today.
+        false
+    }
+}
+
+private enum KeychainStringStore {
+    static func read(service: String, account: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data,
+              let string = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        return string
+    }
+
+    static func write(_ string: String, service: String, account: String) {
+        let data = Data(string.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        let attrs: [String: Any] = [kSecValueData as String: data]
+        let status = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
+        if status == errSecItemNotFound {
+            var add = query
+            add[kSecValueData as String] = data
+            SecItemAdd(add as CFDictionary, nil)
+        }
     }
 }
 #endif

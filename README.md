@@ -53,16 +53,22 @@ open TapPair.xcodeproj
 ```
 
 Then edit `serverURL` in `Sources/TapPairApp/AppViewModel.swift` to point at
-your dev server, and run on a device (the BLE/UWB providers don't function in
-the iOS simulator).
+your dev server, and run on a device (the BLE provider and motion sensing do
+not function meaningfully in the iOS simulator).
 
 ## What the recommended-architecture default looks like
 
 By default the iOS app composes a `BleBumpPairingProvider` (works on every
 iPhone, including the iPhone SE 2nd gen) and submits sensor *evidence* to the
-server, which decides who paired with whom. Toggle UWB ON in Settings to add a
-`UwbPairingProvider` (NearbyInteraction) on top — it doesn't replace BLE+bump,
-it just makes the touch confirmation crisper on iPhone 11 and newer.
+server, which decides who paired with whom. The app generates a fresh
+round-scoped 64-bit token for each round, advertises exactly that token over
+BLE, and sends the same token in `pair_evidence.selfToken`.
+
+The `UwbPairingProvider` source is scaffolded, and Settings shows whether the
+device has UWB-capable hardware, but active NearbyInteraction pairing is gated
+off until the protocol adds a server relay for `NIDiscoveryToken` exchange
+(`PLAN.md` phase 4). This keeps the prototype honest: the current working path
+is BLE + accelerometer bump.
 
 This shape is intentional: the server is the source of truth for pairing
 decisions, the radios on each phone are merely evidence sources. That means:
@@ -74,7 +80,7 @@ decisions, the radios on each phone are merely evidence sources. That means:
 
 ## Status
 
-Phase 0 in `PLAN.md` is complete: protocol locked, server passes 15 tests
-(unit + integration), iOS core passes 14 tests, app target compiles in Xcode.
-Next: phase 3 (real BLE/bump wiring on hardware) and phase 4 (UWB token
-exchange via the server).
+Phase 0 in `PLAN.md` is complete: protocol locked, server passes 16 tests
+(unit + integration), and iOS core is covered by Swift package tests. The iOS
+app target is source-scaffolded for Xcode/device validation. Next: phase 3
+(hardware-tune BLE/bump) and phase 4 (UWB token exchange via the server).

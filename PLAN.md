@@ -73,7 +73,7 @@ This plan turns the proposed party game into a shippable iOS app + a small backe
 
 **Scope**
 - `BleBumpPairingProvider`:
-  - `CoreBluetooth`: advertise a custom 128-bit service UUID with a 16-byte payload = `selfToken`. Scan for the same service UUID; for each peripheral discovered above an RSSI threshold, emit a `ble` evidence record.
+  - `CoreBluetooth`: advertise a custom 128-bit service UUID plus the current 16-hex-character `selfToken` in the local-name payload (acceptable for the foreground prototype). Scan for the same service UUID; for each peripheral discovered above an RSSI threshold, emit a `ble` evidence record whose `peerToken` exactly matches the server-visible token.
   - `CoreMotion`: 100 Hz accelerometer; detect a sharp magnitude spike > 5 G with the right shape (rise then fall < 80 ms); emit a `bump` record.
   - Coalesce both channels for ~750 ms after a bump and submit a single `pair_evidence`.
 - Permission flow: prompt for Bluetooth on lobby entry; prompt for Motion on first round; explainer screen *before* each system prompt.
@@ -100,7 +100,7 @@ This plan turns the proposed party game into a shippable iOS app + a small backe
   - On round start, exchange UWB `NIDiscoveryToken` between candidate peers via the WebSocket server (server relays opaque blobs; it doesn't parse them).
   - Start `NISession`s; emit `uwb` evidence whenever `nearbyObject.distance < 0.20 m`.
   - Tear down sessions on round end.
-- `SettingsView` toggle: "Use UWB precise pairing (iPhone 11+)". Default ON when `NIDeviceCapability.supportsPreciseDistance` is true.
+- `SettingsView` toggle: "Use UWB precise pairing (iPhone 11+)". Keep the toggle disabled until the server-relayed `NIDiscoveryToken` exchange exists; then default ON when `NIDeviceCapability.supportsPreciseDistance` is true.
 - `CompositePairingProvider` runs UWB *alongside* BLE+bump, never instead of it. UWB just makes the `score` cross the threshold faster.
 
 **Tests**

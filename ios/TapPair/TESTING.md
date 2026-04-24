@@ -10,7 +10,9 @@ two-/three-/six-phone playtest script.
   testing, run `npm run dev` from `server/` and edit `serverURL` in
   `AppViewModel.swift` to your laptop's LAN IP.
 - Two iPhones on the same Wi-Fi (and within Bluetooth range — same room).
-- For the UWB test: at least one of the phones must be iPhone 11 or later.
+- UWB hardware is detected in Settings, but active UWB ranging is disabled
+  until the WebSocket protocol relays `NIDiscoveryToken` values (PLAN.md
+  phase 4). Current device tests should focus on BLE+bump.
 
 ## Two-phone happy path (BLE + bump only — the SE-2 path)
 
@@ -22,13 +24,12 @@ two-/three-/six-phone playtest script.
 6. **Expected:** within ~750 ms both phones show "Paired with <name>".
 7. **Expected:** within a few more seconds both phones move to the Results screen.
 
-## Two-phone UWB-accelerated path
+## UWB readiness check
 
-1. Both phones running iOS 17+ with U1/U2 chips.
-2. In Settings on both, toggle UWB **ON** (default for capable devices).
-3. Run the two-phone happy path above.
-4. **Expected:** confirmation feels noticeably crisper (sub-200 ms) and the
-   phones do not need to actually touch — bringing them within ~10 cm is enough.
+1. Open Settings on an iPhone 11 or newer.
+2. **Expected:** the UI reports that UWB hardware is available, but the toggle
+   is disabled because server-side `NIDiscoveryToken` relay is not implemented.
+3. Run the BLE+bump happy path above; UWB should not emit evidence yet.
 
 ## Wrong-partner test
 
@@ -51,7 +52,7 @@ Track these in a shared sheet for each test session:
 | Test                 | Devices              | Pass/Fail | Median latency tap → confirm | Notes |
 |----------------------|----------------------|-----------|-------------------------------|-------|
 | Two-phone BLE+bump   | SE2 + 13             |           |                               |       |
-| Two-phone UWB        | 13 + 14 Pro          |           |                               |       |
+| UWB readiness check  | 13 + 14 Pro          |           |                               |       |
 | Six-phone musical    | mixed                |           |                               |       |
 | Wrong partner reject | 3 phones             |           |                               |       |
 | Disconnect mid-round | 2 phones             |           |                               |       |

@@ -17,10 +17,10 @@ public final class CompositePairingProvider: PairingProvider, @unchecked Sendabl
 
     public let evidence: AsyncStream<EvidenceChannel>
     private let continuation: AsyncStream<EvidenceChannel>.Continuation
-    private let children: [PairingProvider]
+    private let children: [any PairingProvider]
     private var pumps: [Task<Void, Never>] = []
 
-    public init(children: [PairingProvider]) {
+    public init(children: [any PairingProvider]) {
         self.children = children
         var cont: AsyncStream<EvidenceChannel>.Continuation!
         self.evidence = AsyncStream { c in cont = c }

@@ -10,6 +10,12 @@ import XCTest
 
 final class EvidenceCoalescerTests: XCTestCase {
 
+    func testRoundTokenIsCompactHex() {
+        let token = RoundToken.generate()
+        XCTAssertEqual(token.count, 16)
+        XCTAssertTrue(RoundToken.isValid(token))
+    }
+
     func testCoalescesMultipleObservationsIntoOneFlush() async throws {
         actor Box { var batches: [[EvidenceChannel]] = []; func add(_ b: [EvidenceChannel]) { batches.append(b) }; func get() -> [[EvidenceChannel]] { batches } }
         let box = Box()
