@@ -14,6 +14,7 @@
 
 #if canImport(SwiftUI) && canImport(UIKit)
 import Foundation
+import Observation
 import SwiftUI
 import Security
 import TapPairCore
@@ -30,7 +31,7 @@ public final class AppViewModel {
     }
 
     private let store = GameStore()
-    private let client: WebSocketClient
+    @ObservationIgnored private var client: WebSocketClient
     private var provider: (any PairingProvider)?
     private var coalescer: EvidenceCoalescer?
     private var inboxTask: Task<Void, Never>?
@@ -56,16 +57,24 @@ public final class AppViewModel {
     /// Best-effort reconnect. Used from start() and from the lobby when the
     /// user retries a join after a previous failure.
     public func connectAndHello() async {
+        logDebug("connectAndHello start url=\(serverURL.absoluteString)")
         state.connection = .connecting
         state.lastError = nil
+
+        inboxTask?.cancel()
+        inboxTask = nil
+        await client.disconnect()
+        client = WebSocketClient(transport: URLSessionWebSocketTransport())
 
         do {
             try await client.connect(url: serverURL)
         } catch {
             state.connection = .disconnected
             state.lastError = "Connect failed: \(error.localizedDescription)"
+            logDebug("connect failed error=\(error.localizedDescription)")
             return
         }
+        logDebug("connect returned")
         state.connection = .connected
 
         // Pump messages. If the socket dies, mark disconnected so the UI can
@@ -74,6 +83,9 @@ public final class AppViewModel {
         inboxTask?.cancel()
         inboxTask = Task { [weak self] in
             for await msg in stream {
+                await MainActor.run {
+                    self?.logDebug("received server message type=\(msg.debugType)")
+                }
                 await self?.store.apply(msg)
                 await MainActor.run {
                     self?.handleServerMessage(msg)
@@ -85,6 +97,7 @@ public final class AppViewModel {
                 if self.state.lastError == nil {
                     self.state.lastError = "Server connection closed."
                 }
+                self.logDebug("receive loop ended")
             }
         }
 
@@ -92,6 +105,7 @@ public final class AppViewModel {
         let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
         let caps = currentCapabilities()
         do {
+            logDebug("sending hello displayName=\(displayName)")
             try await client.send(.hello(.init(
                 deviceId: deviceId,
                 displayName: displayName,
@@ -103,8 +117,10 @@ public final class AppViewModel {
         } catch {
             state.connection = .disconnected
             state.lastError = "Hello failed: \(error.localizedDescription)"
+            logDebug("hello failed error=\(error.localizedDescription)")
             return
         }
+        logDebug("hello sent")
         rebuildProvider()
     }
 
@@ -119,10 +135,12 @@ public final class AppViewModel {
     // MARK: - User intents
 
     public func createRoom(mode: GameMode) async {
+        logDebug("createRoom tapped mode=\(mode.rawValue)")
         await sendOrSurface(.createRoom(.init(mode: mode, settings: RoomSettings())))
     }
 
     public func joinRoom(code: String) async {
+        logDebug("joinRoom tapped code=\(code.uppercased())")
         await sendOrSurface(.joinRoom(.init(roomCode: code.uppercased())))
     }
 
@@ -140,11 +158,14 @@ public final class AppViewModel {
     @discardableResult
     private func sendOrSurface(_ msg: ClientMessage) async -> Bool {
         do {
+            logDebug("sending client message type=\(msg.debugType)")
             try await client.send(msg)
+            logDebug("sent client message type=\(msg.debugType)")
             return true
         } catch {
             state.lastError = "Send failed: \(error.localizedDescription). Try Reconnect."
             state.connection = .disconnected
+            logDebug("send failed type=\(msg.debugType) error=\(error.localizedDescription)")
             return false
         }
     }
@@ -255,6 +276,10 @@ public final class AppViewModel {
         // prevents the Settings toggle from implying active UWB ranging today.
         false
     }
+
+    private func logDebug(_ message: String) {
+        print("[TapPair] \(message)")
+    }
 }
 
 private enum KeychainStringStore {
@@ -288,6 +313,38 @@ private enum KeychainStringStore {
             var add = query
             add[kSecValueData as String] = data
             SecItemAdd(add as CFDictionary, nil)
+        }
+    }
+}
+
+private extension ClientMessage {
+    var debugType: String {
+        switch self {
+        case .hello: "hello"
+        case .createRoom: "create_room"
+        case .joinRoom: "join_room"
+        case .leaveRoom: "leave_room"
+        case .ready: "ready"
+        case .startRound: "start_round"
+        case .pairEvidence: "pair_evidence"
+        case .cueAck: "cue_ack"
+        case .ping: "ping"
+        }
+    }
+}
+
+private extension ServerMessage {
+    var debugType: String {
+        switch self {
+        case .helloAck: "hello_ack"
+        case .pong: "pong"
+        case .roomState: "room_state"
+        case .roundStarted: "round_started"
+        case .pairAssigned: "pair_assigned"
+        case .pairConfirmed: "pair_confirmed"
+        case .pairRejected: "pair_rejected"
+        case .roundResolved: "round_resolved"
+        case .error: "error"
         }
     }
 }
