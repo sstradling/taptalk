@@ -50,16 +50,28 @@ public final class AppViewModel {
         }
         self.subscription = id
 
-        // Connect & send hello.
+        await connectAndHello()
+    }
+
+    /// Best-effort reconnect. Used from start() and from the lobby when the
+    /// user retries a join after a previous failure.
+    public func connectAndHello() async {
+        state.connection = .connecting
+        state.lastError = nil
+
         do {
             try await client.connect(url: serverURL)
         } catch {
-            await MainActor.run { self.state.lastError = "Connect failed: \(error)" }
+            state.connection = .disconnected
+            state.lastError = "Connect failed: \(error.localizedDescription)"
             return
         }
+        state.connection = .connected
 
-        // Pump messages.
+        // Pump messages. If the socket dies, mark disconnected so the UI can
+        // show it instead of silently failing the next user action.
         let stream = client.messages
+        inboxTask?.cancel()
         inboxTask = Task { [weak self] in
             for await msg in stream {
                 await self?.store.apply(msg)
@@ -67,38 +79,74 @@ public final class AppViewModel {
                     self?.handleServerMessage(msg)
                 }
             }
+            await MainActor.run {
+                guard let self else { return }
+                self.state.connection = .disconnected
+                if self.state.lastError == nil {
+                    self.state.lastError = "Server connection closed."
+                }
+            }
         }
 
         let deviceId = Self.persistentDeviceId()
         let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
         let caps = currentCapabilities()
-        try? await client.send(.hello(.init(
-            deviceId: deviceId,
-            displayName: displayName,
-            appVersion: "0.1.0",
-            platform: .ios,
-            osVersion: osVersion,
-            capabilities: caps
-        )))
+        do {
+            try await client.send(.hello(.init(
+                deviceId: deviceId,
+                displayName: displayName,
+                appVersion: "0.1.0",
+                platform: .ios,
+                osVersion: osVersion,
+                capabilities: caps
+            )))
+        } catch {
+            state.connection = .disconnected
+            state.lastError = "Hello failed: \(error.localizedDescription)"
+            return
+        }
         rebuildProvider()
+    }
+
+    /// Whether outbound user actions (create/join/start) can be sent right now.
+    public var canSendUserActions: Bool {
+        switch state.connection {
+        case .connected, .helloed: return true
+        case .disconnected, .connecting: return false
+        }
     }
 
     // MARK: - User intents
 
     public func createRoom(mode: GameMode) async {
-        try? await client.send(.createRoom(.init(mode: mode, settings: RoomSettings())))
+        await sendOrSurface(.createRoom(.init(mode: mode, settings: RoomSettings())))
     }
 
     public func joinRoom(code: String) async {
-        try? await client.send(.joinRoom(.init(roomCode: code.uppercased())))
+        await sendOrSurface(.joinRoom(.init(roomCode: code.uppercased())))
     }
 
     public func startRound() async {
-        try? await client.send(.startRound)
+        await sendOrSurface(.startRound)
     }
 
     public func leaveRoom() async {
-        try? await client.send(.leaveRoom)
+        await sendOrSurface(.leaveRoom)
+    }
+
+    /// Send a client message and surface any error to the UI. Returns true on
+    /// best-effort send, false if the call threw (which means the socket is
+    /// almost certainly closed).
+    @discardableResult
+    private func sendOrSurface(_ msg: ClientMessage) async -> Bool {
+        do {
+            try await client.send(msg)
+            return true
+        } catch {
+            state.lastError = "Send failed: \(error.localizedDescription). Try Reconnect."
+            state.connection = .disconnected
+            return false
+        }
     }
 
     /// Debug-only "fake tap" so the prototype is testable without two phones.

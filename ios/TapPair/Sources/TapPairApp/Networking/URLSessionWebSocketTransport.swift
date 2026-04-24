@@ -26,7 +26,17 @@ public final class URLSessionWebSocketTransport: WebSocketTransport, @unchecked 
 
     public func send(text: String) async throws {
         guard let task else { throw WebSocketClientError.notConnected }
-        try await task.send(.string(text))
+        // URLSessionWebSocketTask.send happily queues into a closed task
+        // without surfacing an error until the next receive() fails. Bail
+        // explicitly so the caller can show the user a real error.
+        switch task.state {
+        case .running, .suspended:
+            try await task.send(.string(text))
+        case .canceling, .completed:
+            throw WebSocketClientError.notConnected
+        @unknown default:
+            throw WebSocketClientError.notConnected
+        }
     }
 
     public func receive() async throws -> String {
