@@ -31,8 +31,8 @@
 
 #if canImport(CoreBluetooth) && canImport(CoreMotion)
 import Foundation
-import CoreBluetooth
-import CoreMotion
+@preconcurrency import CoreBluetooth
+@preconcurrency import CoreMotion
 import TapPairCore
 
 public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked Sendable {
@@ -43,7 +43,10 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
     public let evidence: AsyncStream<EvidenceChannel>
     private let continuation: AsyncStream<EvidenceChannel>.Continuation
 
-    private static let serviceUUID = CBUUID(string: "A4F9A1A0-0000-4000-8000-000000000001")
+    // CBUUID is not declared Sendable. The instance is constant and read-only,
+    // so marking it nonisolated(unsafe) silences Swift 6 strict-concurrency
+    // diagnostics without changing runtime behavior.
+    private nonisolated(unsafe) static let serviceUUID = CBUUID(string: "A4F9A1A0-0000-4000-8000-000000000001")
 
     private let central: CBCentralManager
     private let peripheral: CBPeripheralManager
