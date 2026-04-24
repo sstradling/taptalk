@@ -64,6 +64,12 @@ export function createServer(port: number = PORT): { wss: WebSocketServer; lobby
       const session = sessions.get(seat.connection?.sessionId ?? "");
       if (session) send(session.ws, msg);
     }
+    log.info("room_state broadcast", {
+      roomCode,
+      phase: snap.phase,
+      players: snap.players.length,
+      roundId: snap.currentRoundId,
+    });
   }
 
   function dispatchActions(roomCode: string, actions: EngineAction[]): void {
@@ -174,6 +180,7 @@ export function createServer(port: number = PORT): { wss: WebSocketServer; lobby
       const json = JSON.parse(raw);
       parsed = ClientMessageSchema.parse(json);
     } catch (err) {
+      log.warn("invalid client message", { sessionId: session.sessionId, error: (err as Error).message });
       send(session.ws, {
         type: "error",
         v: 1,
@@ -183,7 +190,14 @@ export function createServer(port: number = PORT): { wss: WebSocketServer; lobby
       return;
     }
 
+    log.info("client message", {
+      sessionId: session.sessionId,
+      type: parsed.type,
+      displayName: session.displayName || undefined,
+    });
+
     if (!session.helloed && parsed.type !== "hello") {
+      log.warn("message before hello", { sessionId: session.sessionId, type: parsed.type });
       send(session.ws, { type: "error", v: 1, code: "internal", message: "must hello first" });
       return;
     }
@@ -198,6 +212,12 @@ export function createServer(port: number = PORT): { wss: WebSocketServer; lobby
         session.helloed = true;
         session.displayName = parsed.displayName;
         session.capabilities = parsed.capabilities;
+        log.info("client hello", {
+          sessionId: session.sessionId,
+          displayName: parsed.displayName,
+          platform: parsed.platform,
+          capabilities: parsed.capabilities,
+        });
         send(session.ws, {
           type: "hello_ack",
           v: 1,
@@ -218,6 +238,7 @@ export function createServer(port: number = PORT): { wss: WebSocketServer; lobby
         );
         const conn: ConnectionLike = { sessionId: session.sessionId, send: (m) => send(session.ws, m) };
         lobby.attachConnection(roomCode, session.sessionId, conn);
+        log.info("room created", { sessionId: session.sessionId, roomCode, mode: parsed.mode });
         broadcastRoomState(roomCode);
         return;
       }
@@ -228,11 +249,21 @@ export function createServer(port: number = PORT): { wss: WebSocketServer; lobby
           capabilities: session.capabilities,
         });
         if (!result.ok) {
+          log.warn("join room failed", {
+            sessionId: session.sessionId,
+            roomCode: parsed.roomCode,
+            code: result.code,
+          });
           send(session.ws, { type: "error", v: 1, code: result.code, message: result.code });
           return;
         }
         const conn: ConnectionLike = { sessionId: session.sessionId, send: (m) => send(session.ws, m) };
         lobby.attachConnection(parsed.roomCode, session.sessionId, conn);
+        log.info("room joined", {
+          sessionId: session.sessionId,
+          roomCode: parsed.roomCode,
+          playerId: result.playerId,
+        });
         broadcastRoomState(parsed.roomCode);
         return;
       }
@@ -252,10 +283,21 @@ export function createServer(port: number = PORT): { wss: WebSocketServer; lobby
         const where = lobby.roomFor(session.sessionId);
         if (!where) return;
         if (where.room.hostPlayerId !== where.playerId) {
+          log.warn("non-host start_round rejected", {
+            sessionId: session.sessionId,
+            roomCode: where.room.roomCode,
+            playerId: where.playerId,
+          });
           send(session.ws, { type: "error", v: 1, code: "not_host", message: "host only" });
           return;
         }
         const actions = where.room.engine.startRound(Date.now());
+        log.info("round start requested", {
+          sessionId: session.sessionId,
+          roomCode: where.room.roomCode,
+          playerId: where.playerId,
+          actions: actions.length,
+        });
         dispatchActions(where.room.roomCode, actions);
         return;
       }
@@ -288,6 +330,7 @@ export function createServer(port: number = PORT): { wss: WebSocketServer; lobby
       capabilities: [],
     };
     sessions.set(sessionId, session);
+    log.info("websocket connected", { sessionId });
 
     ws.on("message", (data) => {
       try {
@@ -297,6 +340,7 @@ export function createServer(port: number = PORT): { wss: WebSocketServer; lobby
       }
     });
     ws.on("close", () => {
+      log.info("websocket closed", { sessionId });
       sessions.delete(sessionId);
       const left = lobby.leaveRoom(sessionId);
       if (left) broadcastRoomState(left.roomCode);
