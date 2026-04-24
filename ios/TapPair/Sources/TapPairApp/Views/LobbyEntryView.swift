@@ -37,6 +37,9 @@ struct LobbyEntryView: View {
                     Task { await vm.joinRoom(code: roomCode) }
                 }
                 .disabled(roomCode.count != 4 || !vm.canSendUserActions)
+                Text("Or touch phones with the host while they are showing the room code.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
             if let err = vm.state.lastError {
                 Section { Text(err).foregroundStyle(.red) }
