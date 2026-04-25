@@ -43,10 +43,7 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
     public let evidence: AsyncStream<EvidenceChannel>
     private let continuation: AsyncStream<EvidenceChannel>.Continuation
 
-    // CBUUID is not declared Sendable. The instance is constant and read-only,
-    // so marking it nonisolated(unsafe) silences Swift 6 strict-concurrency
-    // diagnostics without changing runtime behavior.
-    private nonisolated(unsafe) static let serviceUUID = CBUUID(string: "A4F9A1A0-0000-4000-8000-000000000001")
+    private static let serviceUUIDString = "A4F9A1A0-0000-4000-8000-000000000001"
 
     private let central: CBCentralManager
     private let peripheral: CBPeripheralManager
@@ -102,7 +99,7 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
         guard peripheral.state == .poweredOn, !currentSelfToken.isEmpty else { return }
         if peripheral.isAdvertising { peripheral.stopAdvertising() }
         peripheral.startAdvertising([
-            CBAdvertisementDataServiceUUIDsKey: [Self.serviceUUID],
+            CBAdvertisementDataServiceUUIDsKey: [Self.makeServiceUUID()],
             CBAdvertisementDataLocalNameKey: currentSelfToken,
         ])
     }
@@ -110,7 +107,7 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
     private func startScanningIfReady() {
         guard central.state == .poweredOn else { return }
         central.scanForPeripherals(
-            withServices: [Self.serviceUUID],
+            withServices: [Self.makeServiceUUID()],
             options: [CBCentralManagerScanOptionAllowDuplicatesKey: true]
         )
     }
@@ -156,6 +153,10 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
 
     private static func nowMs() -> Int64 {
         Int64(Date().timeIntervalSince1970 * 1000)
+    }
+
+    private static func makeServiceUUID() -> CBUUID {
+        CBUUID(string: serviceUUIDString)
     }
 
     private static func bumpEvidence(now: Int64, magnitudeG: Double) -> EvidenceChannel {

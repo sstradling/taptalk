@@ -466,7 +466,7 @@ private final class LobbyTouchJoinProvider: NSObject, @unchecked Sendable {
 
     var onRoomCodeDetected: (@Sendable (String) -> Void)?
 
-    private nonisolated(unsafe) static let serviceUUID = CBUUID(string: "A4F9A1A0-0000-4000-8000-000000000002")
+    private static let serviceUUIDString = "A4F9A1A0-0000-4000-8000-000000000002"
 
     private let central: CBCentralManager
     private let peripheral: CBPeripheralManager
@@ -524,7 +524,7 @@ private final class LobbyTouchJoinProvider: NSObject, @unchecked Sendable {
         guard let code = stateLock.locked({ hostedRoomCode }) else { return }
         if peripheral.isAdvertising { peripheral.stopAdvertising() }
         peripheral.startAdvertising([
-            CBAdvertisementDataServiceUUIDsKey: [Self.serviceUUID],
+            CBAdvertisementDataServiceUUIDsKey: [Self.makeServiceUUID()],
             CBAdvertisementDataLocalNameKey: code,
         ])
     }
@@ -532,7 +532,7 @@ private final class LobbyTouchJoinProvider: NSObject, @unchecked Sendable {
     private func startScanningIfReady() {
         guard central.state == .poweredOn, !central.isScanning else { return }
         central.scanForPeripherals(
-            withServices: [Self.serviceUUID],
+            withServices: [Self.makeServiceUUID()],
             options: [CBCentralManagerScanOptionAllowDuplicatesKey: true]
         )
     }
@@ -581,6 +581,10 @@ private final class LobbyTouchJoinProvider: NSObject, @unchecked Sendable {
 
     private static func nowMs() -> Int64 {
         Int64(Date().timeIntervalSince1970 * 1000)
+    }
+
+    private static func makeServiceUUID() -> CBUUID {
+        CBUUID(string: serviceUUIDString)
     }
 
     private static func isValidRoomCode(_ code: String) -> Bool {
