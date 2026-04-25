@@ -26,6 +26,7 @@ public final class AppViewModel {
     public var state: GameState = GameState()
     public var serverURL: URL = URL(string: "ws://127.0.0.1:8080")!
     public var displayName: String = "Player"
+    public var debugEvents: [String] = []
     public var uwbEnabled: Bool = true {
         didSet { rebuildProvider() }
     }
@@ -39,9 +40,20 @@ public final class AppViewModel {
     private var subscription: UUID?
     private var activeProviderRoundId: Int?
     private var activeSelfToken: String?
+    private var createdRoomAsHost = false
+    #if canImport(CoreBluetooth) && canImport(CoreMotion)
+    @ObservationIgnored private let lobbyTouchJoinProvider = LobbyTouchJoinProvider()
+    #endif
 
     public init() {
         self.client = WebSocketClient(transport: URLSessionWebSocketTransport())
+        #if canImport(CoreBluetooth) && canImport(CoreMotion)
+        self.lobbyTouchJoinProvider.onRoomCodeDetected = { [weak self] code in
+            Task { @MainActor in
+                await self?.joinRoomFromTouch(code: code)
+            }
+        }
+        #endif
     }
 
     public func start() async {
@@ -121,6 +133,7 @@ public final class AppViewModel {
             return
         }
         logDebug("hello sent")
+        startLobbyTouchJoinScanning()
         rebuildProvider()
     }
 
@@ -136,12 +149,22 @@ public final class AppViewModel {
 
     public func createRoom(mode: GameMode) async {
         logDebug("createRoom tapped mode=\(mode.rawValue)")
-        await sendOrSurface(.createRoom(.init(mode: mode, settings: RoomSettings())))
+        createdRoomAsHost = true
+        if !(await sendOrSurface(.createRoom(.init(mode: mode, settings: RoomSettings())))) {
+            createdRoomAsHost = false
+        }
     }
 
     public func joinRoom(code: String) async {
         logDebug("joinRoom tapped code=\(code.uppercased())")
+        createdRoomAsHost = false
         await sendOrSurface(.joinRoom(.init(roomCode: code.uppercased())))
+    }
+
+    public func joinRoomFromTouch(code: String) async {
+        guard state.room == nil else { return }
+        logDebug("touch-to-join detected code=\(code)")
+        await joinRoom(code: code)
     }
 
     public func startRound() async {
@@ -149,7 +172,9 @@ public final class AppViewModel {
     }
 
     public func leaveRoom() async {
-        await sendOrSurface(.leaveRoom)
+        if await sendOrSurface(.leaveRoom) {
+            await leaveRoomLocally()
+        }
     }
 
     /// Send a client message and surface any error to the UI. Returns true on
@@ -224,7 +249,10 @@ public final class AppViewModel {
 
     private func handleServerMessage(_ message: ServerMessage) {
         switch message {
+        case .roomState(let roomState):
+            updateLobbyTouchJoin(for: roomState)
         case .roundStarted, .pairAssigned:
+            stopLobbyTouchJoin()
             Task { await startProviderForCurrentRoundIfNeeded() }
         case .roundResolved:
             Task {
@@ -236,6 +264,57 @@ public final class AppViewModel {
         default:
             break
         }
+    }
+
+    private func leaveRoomLocally() async {
+        await provider?.stop()
+        activeProviderRoundId = nil
+        activeSelfToken = nil
+        createdRoomAsHost = false
+        await coalescer?.reset()
+        await store.mutate { state in
+            state.room = nil
+            state.lastAssignment = nil
+            state.lastConfirmation = nil
+            state.lastResolution = nil
+            state.lastError = nil
+        }
+        self.state = await store.state
+        startLobbyTouchJoinScanning()
+        logDebug("left room locally")
+    }
+
+    private func updateLobbyTouchJoin(for roomState: ServerMessage.RoomState) {
+        guard roomState.phase == .lobby || roomState.phase == .between_rounds else {
+            stopLobbyTouchJoin()
+            return
+        }
+        if createdRoomAsHost {
+            startLobbyTouchJoinHosting(roomCode: roomState.roomCode)
+        } else {
+            stopLobbyTouchJoin()
+        }
+    }
+
+    private func startLobbyTouchJoinScanning() {
+        #if canImport(CoreBluetooth) && canImport(CoreMotion)
+        guard state.room == nil else { return }
+        lobbyTouchJoinProvider.startScanning()
+        logDebug("touch-to-join scanning")
+        #endif
+    }
+
+    private func startLobbyTouchJoinHosting(roomCode: String) {
+        #if canImport(CoreBluetooth) && canImport(CoreMotion)
+        lobbyTouchJoinProvider.startHosting(roomCode: roomCode)
+        logDebug("touch-to-join hosting room=\(roomCode)")
+        #endif
+    }
+
+    private func stopLobbyTouchJoin() {
+        #if canImport(CoreBluetooth) && canImport(CoreMotion)
+        lobbyTouchJoinProvider.stopAll()
+        #endif
     }
 
     private func startProviderForCurrentRoundIfNeeded() async {
@@ -278,7 +357,12 @@ public final class AppViewModel {
     }
 
     private func logDebug(_ message: String) {
-        print("[TapPair] \(message)")
+        let line = "[TapPair] \(message)"
+        print(line)
+        debugEvents.insert(message, at: 0)
+        if debugEvents.count > 8 {
+            debugEvents.removeLast(debugEvents.count - 8)
+        }
     }
 }
 
