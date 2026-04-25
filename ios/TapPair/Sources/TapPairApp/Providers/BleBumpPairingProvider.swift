@@ -52,9 +52,17 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
     private let peripheral: CBPeripheralManager
     private let motion = CMMotionManager()
     private let motionQueue = OperationQueue()
+    private let stateLock = NSLock()
 
     private var currentSelfToken: String = ""
     private var lastBumpAtMs: Int64 = 0
+    private var lastBumpMagnitudeG: Double = 0
+    private var recentBleSightings: [String: BleSighting] = [:]
+
+    private struct BleSighting {
+        let rssiDbm: Double
+        let observedAtMs: Int64
+    }
 
     public override init() {
         var cont: AsyncStream<EvidenceChannel>.Continuation!
@@ -81,6 +89,11 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
         if peripheral.isAdvertising { peripheral.stopAdvertising() }
         if central.isScanning { central.stopScan() }
         motion.stopDeviceMotionUpdates()
+        stateLock.locked {
+            recentBleSightings.removeAll()
+            lastBumpAtMs = 0
+            lastBumpMagnitudeG = 0
+        }
     }
 
     // MARK: - BLE: advertise
@@ -114,15 +127,28 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
             let mag = sqrt(ua.x * ua.x + ua.y * ua.y + ua.z * ua.z)
             if mag > 5.0 {
                 let now = Self.nowMs()
-                if now - self.lastBumpAtMs > 300 {
+                let evidence = self.stateLock.locked {
+                    guard now - self.lastBumpAtMs > 300 else { return nil as [EvidenceChannel]? }
                     self.lastBumpAtMs = now
-                    self.continuation.yield(.init(
-                        kind: .bump,
-                        observedAtMs: now,
-                        magnitudeG: mag,
-                        confidence: min(1.0, mag / 10.0),
-                        tHitMs: now
-                    ))
+                    self.lastBumpMagnitudeG = mag
+                    self.pruneBleSightings(now: now)
+                    let cachedBle = self.recentBleSightings.map { token, sighting in
+                        EvidenceChannel(
+                            kind: .ble,
+                            observedAtMs: now,
+                            peerToken: token,
+                            rssiDbm: sighting.rssiDbm
+                        )
+                    }
+                    return [Self.bumpEvidence(now: now, magnitudeG: mag)] + cachedBle
+                }
+                if let evidence {
+                    // Include strong BLE sightings seen shortly before the bump
+                    // in the same evidence burst. Quick taps often produce BLE
+                    // scan callbacks just before/after the physical hit.
+                    for ev in evidence {
+                        self.continuation.yield(ev)
+                    }
                 }
             }
         }
@@ -130,6 +156,23 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
 
     private static func nowMs() -> Int64 {
         Int64(Date().timeIntervalSince1970 * 1000)
+    }
+
+    private static func bumpEvidence(now: Int64, magnitudeG: Double) -> EvidenceChannel {
+        EvidenceChannel(
+            kind: .bump,
+            observedAtMs: now,
+            magnitudeG: magnitudeG,
+            confidence: min(1.0, magnitudeG / 10.0),
+            tHitMs: now
+        )
+    }
+
+    private func pruneBleSightings(now: Int64) {
+        let cutoff = now - 5_000
+        recentBleSightings = recentBleSightings.filter { _, sighting in
+            sighting.observedAtMs >= cutoff
+        }
     }
 }
 
@@ -144,12 +187,38 @@ extension BleBumpPairingProvider: CBCentralManagerDelegate {
         let name = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name ?? ""
         let peerToken = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard peerToken.count == 16 else { return }
+        let now = Self.nowMs()
+        let recentBump = stateLock.locked {
+            recentBleSightings[peerToken] = BleSighting(rssiDbm: rssi, observedAtMs: now)
+            pruneBleSightings(now: now)
+            return now - lastBumpAtMs <= 2_000 ? (lastBumpAtMs, lastBumpMagnitudeG) : nil
+        }
+
         continuation.yield(.init(
             kind: .ble,
-            observedAtMs: Self.nowMs(),
+            observedAtMs: now,
             peerToken: peerToken,
             rssiDbm: rssi
         ))
+        if let recentBump {
+            // If BLE arrives just after a quick physical tap, emit a matching
+            // bump in the same burst so the server can score BLE+bump together.
+            continuation.yield(.init(
+                kind: .bump,
+                observedAtMs: now,
+                magnitudeG: recentBump.1,
+                confidence: min(1.0, recentBump.1 / 10.0),
+                tHitMs: recentBump.0
+            ))
+        }
+    }
+}
+
+private extension NSLock {
+    func locked<T>(_ body: () -> T) -> T {
+        lock()
+        defer { unlock() }
+        return body()
     }
 }
 
