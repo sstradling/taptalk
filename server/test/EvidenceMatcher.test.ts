@@ -46,7 +46,7 @@ describe("scorePair", () => {
     assert.ok(score < MATCHER_DEFAULTS.scoreThreshold);
   });
 
-  it("mutual strong BLE (both saw peer token) crosses the threshold", () => {
+  it("mutual strong BLE (both saw peer token) crosses the score threshold", () => {
     const a = devA([{ kind: "ble", peerToken: tB, rssiDbm: -40, observedAtMs: 1000 }]);
     const b = devB([{ kind: "ble", peerToken: tA, rssiDbm: -42, observedAtMs: 1000 }]);
     const { score, contributing } = scorePair(a, b);
@@ -61,7 +61,7 @@ describe("scorePair", () => {
     assert.ok(score < MATCHER_DEFAULTS.scoreThreshold);
   });
 
-  it("BLE + bump together cross the threshold (the SE-2 happy path)", () => {
+  it("BLE + paired bumps cross the threshold (SE-2 style path)", () => {
     const a = devA([
       { kind: "ble", peerToken: tB, rssiDbm: -40, observedAtMs: 1000 },
       { kind: "bump", observedAtMs: 1000, magnitudeG: 8 },
@@ -89,7 +89,7 @@ describe("scorePair", () => {
     assert.equal(score, 0);
   });
 
-  it("Audio chirp + BLE together cross the threshold", () => {
+  it("Audio chirp + BLE together cross the score threshold", () => {
     const a = devA([
       { kind: "audio", peerToken: tB, snrDb: 15, observedAtMs: 1000 },
       { kind: "ble", peerToken: tB, rssiDbm: -40, observedAtMs: 1000 },
@@ -100,14 +100,50 @@ describe("scorePair", () => {
   });
 });
 
+describe("resolveTouches requires paired bumps", () => {
+  it("UWB-only high score does not produce a touch claim", () => {
+    const a = devA([{ kind: "uwb", peerToken: tB, distanceM: 0.05, observedAtMs: 1000 }]);
+    const b = devB([]);
+    assert.equal(resolveTouches([a, b]).length, 0);
+  });
+
+  it("mutual BLE only does not produce a touch claim", () => {
+    const a = devA([{ kind: "ble", peerToken: tB, rssiDbm: -40, observedAtMs: 1000 }]);
+    const b = devB([{ kind: "ble", peerToken: tA, rssiDbm: -42, observedAtMs: 1000 }]);
+    assert.equal(resolveTouches([a, b]).length, 0);
+  });
+
+  it("audio + BLE without bumps does not produce a touch claim", () => {
+    const a = devA([
+      { kind: "audio", peerToken: tB, snrDb: 15, observedAtMs: 1000 },
+      { kind: "ble", peerToken: tB, rssiDbm: -40, observedAtMs: 1000 },
+    ]);
+    const b = devB([]);
+    assert.equal(resolveTouches([a, b]).length, 0);
+  });
+
+  it("mutual BLE plus paired bumps produces a touch claim", () => {
+    const a = devA([
+      { kind: "ble", peerToken: tB, rssiDbm: -40, observedAtMs: 1000 },
+      { kind: "bump", observedAtMs: 1000, tHitMs: 1000, magnitudeG: 2 },
+    ]);
+    const b = devB([
+      { kind: "ble", peerToken: tA, rssiDbm: -42, observedAtMs: 1000 },
+      { kind: "bump", observedAtMs: 1050, tHitMs: 1050, magnitudeG: 2 },
+    ]);
+    const touches = resolveTouches([a, b]);
+    assert.equal(touches.length, 1);
+  });
+});
+
 describe("resolveTouches greedy assignment", () => {
   it("picks the highest-scoring claim and locks both players out of further claims", () => {
-    // A and B touch with UWB + BLE + bump (score 9.0).
-    // A and C have mutual BLE only (score 4.0 at threshold — still loses to A-B).
+    // A and B touch with UWB + BLE + paired bump (high score).
+    // A and C have mutual BLE only (score 4.0 at threshold — no bump pair, excluded).
     const a = devA([
       { kind: "uwb", peerToken: tB, distanceM: 0.05, observedAtMs: 1000 },
       { kind: "ble", peerToken: tB, rssiDbm: -40, observedAtMs: 1000 },
-      { kind: "bump", observedAtMs: 1000, magnitudeG: 8 },
+      { kind: "bump", observedAtMs: 1000, tHitMs: 1000, magnitudeG: 8 },
       { kind: "ble", peerToken: "tokC", rssiDbm: -40, observedAtMs: 1000 },
     ]);
     const b: DeviceEvidence = {
@@ -116,7 +152,7 @@ describe("resolveTouches greedy assignment", () => {
       receivedAtMs: 1000,
       channels: [
         { kind: "ble", peerToken: tA, rssiDbm: -40, observedAtMs: 1000 },
-        { kind: "bump", observedAtMs: 1000, magnitudeG: 8 },
+        { kind: "bump", observedAtMs: 1000, tHitMs: 1000, magnitudeG: 8 },
       ],
     };
     const c: DeviceEvidence = {

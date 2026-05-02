@@ -70,17 +70,21 @@ public actor GameStore {
             out.lastAssignment = nil
             out.lastConfirmation = nil
             out.lastResolution = nil
+            out.bumpHint = nil
             // currentRoundId is also pushed via room_state; keep both consistent.
             if var r = out.room { r.currentRoundId = rid; out.room = r }
         case .pairAssigned(let pa):
             out.lastAssignment = pa
+            out.bumpHint = nil
         case .pairConfirmed(let rid, _, let name, let elapsed):
             out.lastConfirmation = .init(roundId: rid, partnerDisplayName: name, elapsedMs: elapsed)
+            out.bumpHint = nil
         case .pairRejected:
             // Surface as transient error string; UI clears on next user action.
             out.lastError = "Wrong partner — try again."
         case .roundResolved(let rid, let results, let next):
             out.lastResolution = .init(roundId: rid, results: results, nextPhase: next)
+            out.bumpHint = nil
         case .error(_, let message):
             out.lastError = message
         }

@@ -16,8 +16,10 @@
 //         token decoded from their advertisement data.
 //   * Bump half:
 //       - Subscribe to CMMotionManager device motion at 100 Hz.
-//       - Detect a sharp acceleration spike (> 5 G; rise+fall < 80 ms).
-//       - Emit a `.bump` EvidenceChannel with `tHitMs` set to the spike apex.
+//       - Detect a sharp acceleration spike (> 1.5 G on |userAcceleration|).
+//       - Emit a `.bump` EvidenceChannel with `tHitMs` set to the sample time.
+//       - Optionally report tap-strength hints via `onMotionHint` for in-round UI
+//         (sub-threshold "tap harder", excessive "calm down") without sending wire evidence.
 //
 // All evidence flows into the shared AsyncStream; `EvidenceCoalescer` (in
 // TapPairCore) batches them into a single `pair_evidence` message per touch.
@@ -43,6 +45,9 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
     public let evidence: AsyncStream<EvidenceChannel>
     private let continuation: AsyncStream<EvidenceChannel>.Continuation
 
+    /// UI-only hints (not sent as `pair_evidence`). MainActor; invoked from the motion queue.
+    public var onMotionHint: (@MainActor (String?) -> Void)?
+
     private static let serviceUUIDString = "A4F9A1A0-0000-4000-8000-000000000001"
 
     private let central: CBCentralManager
@@ -56,11 +61,16 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
     private var lastBumpMagnitudeG: Double = 0
     private var recentBleSightings: [String: BleSighting] = [:]
 
-    /// Log the largest |userAcceleration| seen in each window (debug tap strength vs 5 G threshold).
+    /// Log the largest |userAcceleration| seen in each window (debug tap strength vs bump threshold).
     private var motionLogHighWaterG: Double = 0
     private var lastMotionDebugAtMs: Int64 = 0
+    private var lastMotionHintAtMs: Int64 = 0
 
-    private static let bumpThresholdG: Double = 5.0
+    private static let bumpThresholdG: Double = 1.5
+    private static let tapHarderBandLowG: Double = 0.75
+    private static let tapHarderBandHighG: Double = 1.5
+    private static let calmDownThresholdG: Double = 5.0
+    private static let motionHintCooldownMs: Int64 = 900
     /// Only track peaks above this so idle sensor noise does not spam the console.
     private static let motionLogFloorG: Double = 0.35
     private static let motionLogIntervalMs: Int64 = 200
@@ -102,6 +112,10 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
         }
         motionLogHighWaterG = 0
         lastMotionDebugAtMs = 0
+        lastMotionHintAtMs = 0
+        Task { @MainActor in
+            self.onMotionHint?(nil)
+        }
     }
 
     // MARK: - BLE: advertise
@@ -161,6 +175,9 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
             }
 
             if mag > Self.bumpThresholdG {
+                Task { @MainActor in
+                    self.onMotionHint?(nil)
+                }
                 let evidence = self.stateLock.locked {
                     guard now - self.lastBumpAtMs > 300 else { return nil as [EvidenceChannel]? }
                     self.lastBumpAtMs = now
@@ -182,7 +199,20 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
                         self.continuation.yield(ev)
                     }
                 }
+            } else if mag >= Self.tapHarderBandLowG && mag < Self.tapHarderBandHighG {
+                self.maybeEmitMotionHint(now: now, message: "Tap harder")
+            } else if mag > Self.calmDownThresholdG {
+                self.maybeEmitMotionHint(now: now, message: "Calm down! Its just a game!")
             }
+        }
+    }
+
+    private func maybeEmitMotionHint(now: Int64, message: String) {
+        guard now - lastMotionHintAtMs >= Self.motionHintCooldownMs else { return }
+        lastMotionHintAtMs = now
+        let hint = onMotionHint
+        Task { @MainActor in
+            hint?(message)
         }
     }
 

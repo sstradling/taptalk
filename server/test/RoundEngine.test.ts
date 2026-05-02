@@ -27,6 +27,13 @@ function uwbHit(peerToken: string) {
   return [{ kind: "uwb" as const, peerToken, distanceM: 0.05, observedAtMs: 1000 }];
 }
 
+function pairedBumpTouch(peerToken: string, tHitMs = 1000) {
+  return [
+    { kind: "uwb" as const, peerToken, distanceM: 0.05, observedAtMs: tHitMs },
+    { kind: "bump" as const, observedAtMs: tHitMs, tHitMs, magnitudeG: 8 },
+  ];
+}
+
 describe("RoundEngine", () => {
   it("startRound emits round_started and one pair_assigned per player", () => {
     const e = newEngine();
@@ -48,11 +55,11 @@ describe("RoundEngine", () => {
     e.addPlayer({ playerId: "p2", displayName: "Bob" });
     e.startRound(1000);
 
-    const a1 = e.submitEvidence("p1", e.currentRoundId, "confirm", "tA", uwbHit("tB"), 2000);
+    const a1 = e.submitEvidence("p1", e.currentRoundId, "confirm", "tA", pairedBumpTouch("tB", 2000), 2000);
     e.setSelfToken("p2", "tB");
     e.setSelfToken("p1", "tA");
 
-    const a2 = e.submitEvidence("p2", e.currentRoundId, "confirm", "tB", [], 2050);
+    const a2 = e.submitEvidence("p2", e.currentRoundId, "confirm", "tB", pairedBumpTouch("tA", 2050), 2050);
     const all = [...a1, ...a2];
 
     const confirmed = all.find((a) => a.kind === "broadcast_pair_confirmed") as Extract<EngineAction, { kind: "broadcast_pair_confirmed" }> | undefined;
@@ -84,7 +91,19 @@ describe("RoundEngine", () => {
     e.setSelfToken(wrong, wrongTok);
     e.setSelfToken("p1", "t_p1");
 
-    const actions = e.submitEvidence("p1", e.currentRoundId, "confirm", "t_p1", uwbHit(wrongTok), 2000);
+    const hit1 = 2000;
+    const hit2 = 2050;
+    const p1Evidence = [
+      ...pairedBumpTouch(wrongTok, hit1).filter((c) => c.kind === "bump"),
+      { kind: "ble" as const, peerToken: wrongTok, rssiDbm: -40, observedAtMs: hit1 },
+    ];
+    const wrongEvidence = [
+      ...pairedBumpTouch("t_p1", hit2).filter((c) => c.kind === "bump"),
+      { kind: "ble" as const, peerToken: "t_p1", rssiDbm: -42, observedAtMs: hit2 },
+    ];
+    const aP1 = e.submitEvidence("p1", e.currentRoundId, "confirm", "t_p1", p1Evidence, 2000);
+    const aWrong = e.submitEvidence(wrong, e.currentRoundId, "confirm", wrongTok, wrongEvidence, 2050);
+    const actions = [...aP1, ...aWrong];
     const rejected = actions.filter((a) => a.kind === "private_pair_rejected");
     assert.ok(rejected.length >= 1, "should produce at least one pair_rejected");
     const confirmed = actions.find((a) => a.kind === "broadcast_pair_confirmed");
@@ -96,7 +115,7 @@ describe("RoundEngine", () => {
     e.addPlayer({ playerId: "p1", displayName: "A" });
     e.addPlayer({ playerId: "p2", displayName: "B" });
     // No startRound: phase is still "lobby".
-    const actions = e.submitEvidence("p1", 1, "confirm", "tA", uwbHit("tB"), 2000);
+    const actions = e.submitEvidence("p1", 1, "confirm", "tA", pairedBumpTouch("tB"), 2000);
     assert.equal(actions.length, 1);
     assert.equal(actions[0]!.kind, "private_pair_rejected");
   });
@@ -107,7 +126,7 @@ describe("RoundEngine", () => {
     e.addPlayer({ playerId: "p2", displayName: "B" });
     e.startRound(1000);
 
-    const actions = e.submitEvidence("p1", e.currentRoundId + 1, "confirm", "tA", uwbHit("tB"), 2000);
+    const actions = e.submitEvidence("p1", e.currentRoundId + 1, "confirm", "tA", pairedBumpTouch("tB"), 2000);
 
     assert.equal(actions.length, 1);
     assert.equal(actions[0]!.kind, "private_pair_rejected");
