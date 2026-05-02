@@ -202,8 +202,10 @@ public final class AppViewModel {
     /// Debug-only "fake tap" so the prototype is testable without two phones.
     public func injectFakeTouch(peerToken: String) async {
         let now = Int64(Date().timeIntervalSince1970 * 1000)
-        let ev = EvidenceChannel(kind: .uwb, observedAtMs: now, peerToken: peerToken, distanceM: 0.05)
-        await coalescer?.ingest(ev)
+        let uwb = EvidenceChannel(kind: .uwb, observedAtMs: now, peerToken: peerToken, distanceM: 0.05)
+        let bump = EvidenceChannel(kind: .bump, observedAtMs: now, magnitudeG: 6, tHitMs: now)
+        await coalescer?.ingest(uwb)
+        await coalescer?.ingest(bump)
         await coalescer?.flush()
     }
 
@@ -216,7 +218,14 @@ public final class AppViewModel {
         activeSelfToken = nil
         var children: [any PairingProvider] = []
         #if canImport(CoreBluetooth) && canImport(CoreMotion)
-        children.append(BleBumpPairingProvider())
+        let bleBump = BleBumpPairingProvider()
+        bleBump.onMotionHint = { [weak self] hint in
+            guard let self else { return }
+            Task {
+                await self.store.mutate { $0.bumpHint = hint }
+            }
+        }
+        children.append(bleBump)
         #endif
         #if canImport(NearbyInteraction)
         if Self.uwbProviderCompositionEnabled, uwbEnabled, #available(iOS 14.0, *) {
@@ -284,6 +293,7 @@ public final class AppViewModel {
             state.lastConfirmation = nil
             state.lastResolution = nil
             state.lastError = nil
+            state.bumpHint = nil
         }
         self.state = await store.state
         startLobbyTouchJoinScanning()

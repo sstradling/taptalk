@@ -39,10 +39,26 @@ final class GameStoreTests: XCTestCase {
         s.lastConfirmation = .init(roundId: 1, partnerDisplayName: "X", elapsedMs: 1000)
         s.lastResolution = .init(roundId: 1, results: [], nextPhase: .between_rounds)
         s.lastAssignment = .init(roundId: 1, role: .pair, cue: .init(cueId: "c", kind: .text, modality: [.text], payload: [:], complementHint: "h"), findDeadlineMs: 0)
+        s.bumpHint = "Tap harder"
         let out = GameStore.reduce(s, .roundStarted(roundId: 2, registerDeadlineMs: 1234), nowMs: 0)
         XCTAssertNil(out.lastAssignment)
         XCTAssertNil(out.lastConfirmation)
         XCTAssertNil(out.lastResolution)
+        XCTAssertNil(out.bumpHint)
+    }
+
+    func testPairAssignedClearsBumpHint() {
+        var s = GameState()
+        s.bumpHint = "Tap harder"
+        let pa = ServerMessage.pairAssigned(.init(
+            roundId: 1,
+            role: .pair,
+            cue: .init(cueId: "c", kind: .text, modality: [.text], payload: [:], complementHint: "h"),
+            findDeadlineMs: 0
+        ))
+        let out = GameStore.reduce(s, pa, nowMs: 0)
+        XCTAssertNil(out.bumpHint)
+        XCTAssertNotNil(out.lastAssignment)
     }
 
     func testPairConfirmedSetsConfirmation() {

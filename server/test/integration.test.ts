@@ -106,14 +106,19 @@ describe("integration: full happy-path round", () => {
     assert.equal(hostAssign.role, "pair");
     assert.equal(guestAssign.role, "pair");
 
-    // Both report mutual UWB sighting.
+    const now = Date.now();
+
+    // Both report UWB + bump within the server's paired-bump window.
     host.send({
       type: "pair_evidence",
       v: 1,
       roundId: hostAssign.roundId,
       phase: "confirm",
       selfToken: "tokHost",
-      channels: [{ kind: "uwb", peerToken: "tokGuest", distanceM: 0.05, observedAtMs: Date.now() }],
+      channels: [
+        { kind: "uwb", peerToken: "tokGuest", distanceM: 0.05, observedAtMs: now },
+        { kind: "bump", observedAtMs: now, tHitMs: now, magnitudeG: 2 },
+      ],
     });
     guest.send({
       type: "pair_evidence",
@@ -121,7 +126,10 @@ describe("integration: full happy-path round", () => {
       roundId: guestAssign.roundId,
       phase: "confirm",
       selfToken: "tokGuest",
-      channels: [{ kind: "uwb", peerToken: "tokHost", distanceM: 0.05, observedAtMs: Date.now() }],
+      channels: [
+        { kind: "uwb", peerToken: "tokHost", distanceM: 0.05, observedAtMs: now },
+        { kind: "bump", observedAtMs: now, tHitMs: now, magnitudeG: 2 },
+      ],
     });
 
     const hostConfirm = await host.waitFor((m) => m.type === "pair_confirmed");

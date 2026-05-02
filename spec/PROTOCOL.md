@@ -216,13 +216,13 @@ score(A,B) =
 
 For BLE, each direction that sees the assigned peer’s `selfToken` with RSSI > -55 dBm contributes **2.0** (so a mutual sighting in a single scoring window contributes **4.0** total).
 
-A pair is considered *touched* if `score >= 4.0`. The server then:
+A pair is considered *touched* only if **`score >= 4.0` and both devices each report a `bump` channel whose hit times fall within ±200 ms of each other** (same condition as the `3.0 * I(…bump…)` term). The server then:
 
-1. Greedily picks the highest-scoring touch claim.
+1. Greedily picks the highest-scoring touch claim among pairs that satisfy that rule.
 2. If the touched pair matches the assigned pair for the round, emits `pair_confirmed` to both.
 3. Otherwise emits `pair_rejected` privately to both, and removes their evidence from this window so they can re-tap.
 
-Rationale: any single channel can be spoofed or noisy. Requiring score >= 4.0 means at least UWB alone, OR **mutual** BLE proximity (both phones saw each other’s token), OR one-sided BLE plus bump/audio, OR bump + audio. This keeps the SE 2 (no UWB) playable while making UWB devices have a single-channel "magic" path.
+Rationale: BLE or UWB proximity alone is too easy to satisfy at arm’s length; requiring **paired bumps** means both phones registered a physical tap in the same instant. Composite scores (BLE + bump, UWB + bump, audio + bump + BLE, etc.) still help disambiguate and reduce false rejects when taps are soft or radios are noisy.
 
 ## 8. Versioning
 

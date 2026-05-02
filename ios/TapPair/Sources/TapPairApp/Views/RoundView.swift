@@ -34,6 +34,13 @@ struct RoundView: View {
             if let err = vm.state.lastError {
                 Text(err).foregroundStyle(.red)
             }
+            if let hint = vm.state.bumpHint, !hint.isEmpty {
+                Text(hint)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.orange)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
             #if DEBUG
             DisclosureGroup("Debug: simulate touch") {
                 TextField("partner self-token", text: $fakePeerToken)

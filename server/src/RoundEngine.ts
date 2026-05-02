@@ -241,9 +241,9 @@ export class RoundEngine {
 
   private tryMatch(now: number): EngineAction[] {
     // Include synthetic empty-evidence entries for every known selfToken so
-    // that a unilateral observation (e.g. "A's UWB sees B at 5cm" with B
-    // having sent nothing) can still produce a match. This is important for
-    // UWB / audio channels which are inherently one-sided observations.
+    // that a unilateral observation paired with the other device's reports
+    // can still score (e.g. one phone's BLE list). Touch claims still require
+    // paired bumps (see EvidenceMatcher.resolveTouches).
     const present = new Set(this.evidenceBuffer.map((e) => e.playerId));
     const synthetic: DeviceEvidence[] = [];
     for (const [playerId, selfToken] of this.selfTokens) {

@@ -109,7 +109,7 @@ export function resolveTouches(
       const bj = evidence[j];
       if (!bj) continue;
       const { score, contributing } = scorePair(ai, bj, cfg);
-      if (score >= cfg.scoreThreshold) {
+      if (claimQualifiesAsTouch(score, ai, bj, cfg)) {
         candidates.push({ a: ai.playerId, b: bj.playerId, score, contributingKinds: contributing });
       }
     }
@@ -128,6 +128,12 @@ export function resolveTouches(
 
 // ---- helpers ---------------------------------------------------------------
 
+/** Score must meet threshold and both sides must report a bump within the pairing window. */
+function claimQualifiesAsTouch(score: number, a: DeviceEvidence, b: DeviceEvidence, cfg: MatcherTunables): boolean {
+  if (score < cfg.scoreThreshold) return false;
+  return bothBumpedTogether(a, b, cfg.bumpDeltaMs);
+}
+
 function bothBumpedTogether(a: DeviceEvidence, b: DeviceEvidence, deltaMs: number): boolean {
   const ab = a.channels.find((c) => c.kind === "bump");
   const bb = b.channels.find((c) => c.kind === "bump");
@@ -137,7 +143,7 @@ function bothBumpedTogether(a: DeviceEvidence, b: DeviceEvidence, deltaMs: numbe
   return Math.abs(at - bt) <= deltaMs;
 }
 
-/** One-sided BLE is one weight; mutual BLE (both saw the correct peer) is two (crosses threshold without bump). */
+/** One-sided BLE is one weight; mutual BLE (both saw the correct peer) is two weights. */
 function mutualBleScore(
   a: DeviceEvidence,
   b: DeviceEvidence,

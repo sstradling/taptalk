@@ -21,6 +21,8 @@ public struct GameState: Equatable, Sendable {
     public var lastConfirmation: PairConfirmation? = nil
     public var lastResolution: RoundResolution? = nil
     public var lastError: String? = nil
+    /// Ephemeral pairing hint from motion (e.g. "tap harder"); cleared when the round changes.
+    public var bumpHint: String? = nil
     public var enabledCapabilities: Set<Capability> = [.ble, .bump]
 
     public init() {}
