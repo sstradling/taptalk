@@ -32,6 +32,14 @@ final class MessageCodableTests: XCTestCase {
         XCTAssertTrue(json.contains("\"capabilities\":[\"ble\",\"bump\"]"))
     }
 
+    func testCreateRoomEncodesOptionalDisplayName() throws {
+        let msg = ClientMessage.createRoom(.init(displayName: "Sam", mode: .musical_chairs, settings: .init()))
+        let data = try encoder.encode(msg)
+        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertTrue(json.contains("\"type\":\"create_room\""))
+        XCTAssertTrue(json.contains("\"displayName\":\"Sam\""))
+    }
+
     func testPairEvidenceRoundTrip() throws {
         let msg = ClientMessage.pairEvidence(.init(
             roundId: 42,

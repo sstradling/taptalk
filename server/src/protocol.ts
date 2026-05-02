@@ -47,6 +47,8 @@ export const HelloSchema = z.object({
 export const CreateRoomSchema = z.object({
   ...envelope,
   type: z.literal("create_room"),
+  /** Display name at room entry; falls back to session name from `hello` if omitted (legacy clients). */
+  displayName: z.string().min(1).max(24).optional(),
   mode: ModeSchema,
   settings: z
     .object({
@@ -56,11 +58,13 @@ export const CreateRoomSchema = z.object({
     .default({ roundSeconds: 60, maxPlayers: 16 }),
 });
 
-export const JoinRoomSchema = z.object({
-  ...envelope,
-  type: z.literal("join_room"),
-  roomCode: z.string().regex(/^[A-HJ-NP-Z2-9]{4}$/),
-});
+ export const JoinRoomSchema = z.object({
+   ...envelope,
+   type: z.literal("join_room"),
+   /** Display name at room entry; falls back to session name from `hello` if omitted (legacy clients). */
+   displayName: z.string().min(1).max(24).optional(),
+   roomCode: z.string().regex(/^[A-HJ-NP-Z2-9]{4}$/),
+ });
 
 export const LeaveRoomSchema = z.object({
   ...envelope,

@@ -117,6 +117,12 @@ export class RoundEngine {
     if (p) p.ready = ready;
   }
 
+  /** Update roster label (e.g. client edited display name before create/join). */
+  setDisplayName(playerId: string, displayName: string): void {
+    const p = this.players.get(playerId);
+    if (p) p.displayName = displayName;
+  }
+
   alivePlayers(): PlayerInfo[] {
     return [...this.players.values()].filter((p) => p.alive);
   }

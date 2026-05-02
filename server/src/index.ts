@@ -244,8 +244,10 @@ export function createServer(port: number = PORT): { wss: WebSocketServer; lobby
         return;
       }
       case "create_room": {
+        const displayName = parsed.displayName ?? session.displayName;
+        session.displayName = displayName;
         const { roomCode } = lobby.createRoom(
-          { sessionId: session.sessionId, displayName: session.displayName, capabilities: session.capabilities },
+          { sessionId: session.sessionId, displayName, capabilities: session.capabilities },
           parsed.mode,
           parsed.settings.roundSeconds
         );
@@ -256,9 +258,11 @@ export function createServer(port: number = PORT): { wss: WebSocketServer; lobby
         return;
       }
       case "join_room": {
+        const displayName = parsed.displayName ?? session.displayName;
+        session.displayName = displayName;
         const result = lobby.joinRoom(parsed.roomCode, {
           sessionId: session.sessionId,
-          displayName: session.displayName,
+          displayName,
           capabilities: session.capabilities,
         });
         if (!result.ok) {

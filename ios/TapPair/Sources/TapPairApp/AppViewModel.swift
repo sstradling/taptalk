@@ -152,17 +152,17 @@ public final class AppViewModel {
     // MARK: - User intents
 
     public func createRoom(mode: GameMode) async {
-        logDebug("createRoom tapped mode=\(mode.rawValue)")
+        logDebug("createRoom tapped mode=\(mode.rawValue) displayName=\(displayName)")
         createdRoomAsHost = true
-        if !(await sendOrSurface(.createRoom(.init(mode: mode, settings: RoomSettings())))) {
+        if !(await sendOrSurface(.createRoom(.init(displayName: displayName, mode: mode, settings: RoomSettings())))) {
             createdRoomAsHost = false
         }
     }
 
     public func joinRoom(code: String) async {
-        logDebug("joinRoom tapped code=\(code.uppercased())")
+        logDebug("joinRoom tapped code=\(code.uppercased()) displayName=\(displayName)")
         createdRoomAsHost = false
-        await sendOrSurface(.joinRoom(.init(roomCode: code.uppercased())))
+        await sendOrSurface(.joinRoom(.init(displayName: displayName, roomCode: code.uppercased())))
     }
 
     public func joinRoomFromTouch(code: String) async {
