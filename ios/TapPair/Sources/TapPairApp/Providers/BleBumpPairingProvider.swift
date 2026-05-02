@@ -56,6 +56,15 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
     private var lastBumpMagnitudeG: Double = 0
     private var recentBleSightings: [String: BleSighting] = [:]
 
+    /// Log the largest |userAcceleration| seen in each window (debug tap strength vs 5 G threshold).
+    private var motionLogHighWaterG: Double = 0
+    private var lastMotionDebugAtMs: Int64 = 0
+
+    private static let bumpThresholdG: Double = 5.0
+    /// Only track peaks above this so idle sensor noise does not spam the console.
+    private static let motionLogFloorG: Double = 0.35
+    private static let motionLogIntervalMs: Int64 = 200
+
     private struct BleSighting {
         let rssiDbm: Double
         let observedAtMs: Int64
@@ -91,6 +100,8 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
             lastBumpAtMs = 0
             lastBumpMagnitudeG = 0
         }
+        motionLogHighWaterG = 0
+        lastMotionDebugAtMs = 0
     }
 
     // MARK: - BLE: advertise
@@ -115,15 +126,41 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
     // MARK: - Bump detection
 
     private func startBumpDetection() {
-        guard motion.isDeviceMotionAvailable else { return }
+        guard motion.isDeviceMotionAvailable else {
+            Self.logMotion("bump detection skipped: isDeviceMotionAvailable == false")
+            return
+        }
+        motionLogHighWaterG = 0
+        lastMotionDebugAtMs = Self.nowMs()
         motion.deviceMotionUpdateInterval = 1.0 / 100.0
         motion.startDeviceMotionUpdates(to: motionQueue) { [weak self] dm, _ in
             guard let self, let dm else { return }
             // userAcceleration is in G's, gravity-removed.
             let ua = dm.userAcceleration
             let mag = sqrt(ua.x * ua.x + ua.y * ua.y + ua.z * ua.z)
-            if mag > 5.0 {
-                let now = Self.nowMs()
+            let now = Self.nowMs()
+
+            if mag > Self.motionLogFloorG {
+                self.motionLogHighWaterG = max(self.motionLogHighWaterG, mag)
+            }
+            if now - self.lastMotionDebugAtMs >= Self.motionLogIntervalMs {
+                if self.motionLogHighWaterG >= Self.motionLogFloorG {
+                    Self.logMotion(
+                        String(
+                            format: "userAccel |G|≈%.2f (threshold %.1f for bump); components x=%.2f y=%.2f z=%.2f",
+                            self.motionLogHighWaterG,
+                            Self.bumpThresholdG,
+                            ua.x,
+                            ua.y,
+                            ua.z
+                        )
+                    )
+                }
+                self.motionLogHighWaterG = 0
+                self.lastMotionDebugAtMs = now
+            }
+
+            if mag > Self.bumpThresholdG {
                 let evidence = self.stateLock.locked {
                     guard now - self.lastBumpAtMs > 300 else { return nil as [EvidenceChannel]? }
                     self.lastBumpAtMs = now
@@ -140,15 +177,17 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
                     return [Self.bumpEvidence(now: now, magnitudeG: mag)] + cachedBle
                 }
                 if let evidence {
-                    // Include strong BLE sightings seen shortly before the bump
-                    // in the same evidence burst. Quick taps often produce BLE
-                    // scan callbacks just before/after the physical hit.
+                    Self.logMotion(String(format: "bump detected |G|=%.2f", mag))
                     for ev in evidence {
                         self.continuation.yield(ev)
                     }
                 }
             }
         }
+    }
+
+    private static func logMotion(_ message: String) {
+        print("[TapPair] motion \(message)")
     }
 
     private static func nowMs() -> Int64 {
