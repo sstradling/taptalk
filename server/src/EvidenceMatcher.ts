@@ -74,9 +74,10 @@ export function scorePair(
     score += cfg.weight.bumpPair;
     contributing.push("bump");
   }
-  if (eitherSawOtherOnBle(a, b, cfg.bleRssiDbm)) {
-    score += cfg.weight.bleSeen;
-    contributing.push("ble");
+  {
+    const ble = mutualBleScore(a, b, cfg.bleRssiDbm, cfg.weight.bleSeen);
+    score += ble.score;
+    if (ble.score > 0) contributing.push(...ble.tags);
   }
   if (eitherUwbClose(a, b, cfg.uwbDistanceM)) {
     score += cfg.weight.uwbClose;
@@ -136,14 +137,22 @@ function bothBumpedTogether(a: DeviceEvidence, b: DeviceEvidence, deltaMs: numbe
   return Math.abs(at - bt) <= deltaMs;
 }
 
-function eitherSawOtherOnBle(a: DeviceEvidence, b: DeviceEvidence, rssiThreshold: number): boolean {
+/** One-sided BLE is one weight; mutual BLE (both saw the correct peer) is two (crosses threshold without bump). */
+function mutualBleScore(
+  a: DeviceEvidence,
+  b: DeviceEvidence,
+  rssiThreshold: number,
+  bleWeight: number
+): { score: number; tags: string[] } {
   const aSawB = a.channels.some(
     (c) => c.kind === "ble" && c.peerToken === b.selfToken && (c.rssiDbm ?? -127) > rssiThreshold
   );
   const bSawA = b.channels.some(
     (c) => c.kind === "ble" && c.peerToken === a.selfToken && (c.rssiDbm ?? -127) > rssiThreshold
   );
-  return aSawB || bSawA;
+  if (aSawB && bSawA) return { score: bleWeight * 2, tags: ["ble", "ble"] };
+  if (aSawB || bSawA) return { score: bleWeight, tags: ["ble"] };
+  return { score: 0, tags: [] };
 }
 
 function eitherUwbClose(a: DeviceEvidence, b: DeviceEvidence, distanceM: number): boolean {

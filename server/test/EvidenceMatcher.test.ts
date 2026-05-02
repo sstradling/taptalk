@@ -39,11 +39,19 @@ describe("scorePair", () => {
     assert.ok(score < MATCHER_DEFAULTS.scoreThreshold);
   });
 
-  it("BLE alone is not enough", () => {
+  it("one-sided BLE is not enough without bump/UWB/audio", () => {
     const a = devA([{ kind: "ble", peerToken: tB, rssiDbm: -40, observedAtMs: 1000 }]);
-    const b = devB([{ kind: "ble", peerToken: tA, rssiDbm: -42, observedAtMs: 1000 }]);
+    const b = devB([]);
     const { score } = scorePair(a, b);
     assert.ok(score < MATCHER_DEFAULTS.scoreThreshold);
+  });
+
+  it("mutual strong BLE (both saw peer token) crosses the threshold", () => {
+    const a = devA([{ kind: "ble", peerToken: tB, rssiDbm: -40, observedAtMs: 1000 }]);
+    const b = devB([{ kind: "ble", peerToken: tA, rssiDbm: -42, observedAtMs: 1000 }]);
+    const { score, contributing } = scorePair(a, b);
+    assert.ok(score >= MATCHER_DEFAULTS.scoreThreshold, `score=${score}`);
+    assert.deepEqual(contributing.sort(), ["ble", "ble"]);
   });
 
   it("Bump alone is not enough", () => {
@@ -64,7 +72,7 @@ describe("scorePair", () => {
     ]);
     const { score, contributing } = scorePair(a, b);
     assert.ok(score >= MATCHER_DEFAULTS.scoreThreshold, `score=${score}`);
-    assert.deepEqual(contributing.sort(), ["ble", "bump"]);
+    assert.deepEqual(contributing.sort(), ["ble", "ble", "bump"]);
   });
 
   it("Bumps spaced > 200ms apart do NOT count as paired bumps", () => {
@@ -95,7 +103,7 @@ describe("scorePair", () => {
 describe("resolveTouches greedy assignment", () => {
   it("picks the highest-scoring claim and locks both players out of further claims", () => {
     // A and B touch with UWB + BLE + bump (score 9.0).
-    // A and C have a weaker BLE-only claim (score 2.0, below threshold).
+    // A and C have mutual BLE only (score 4.0 at threshold — still loses to A-B).
     const a = devA([
       { kind: "uwb", peerToken: tB, distanceM: 0.05, observedAtMs: 1000 },
       { kind: "ble", peerToken: tB, rssiDbm: -40, observedAtMs: 1000 },
