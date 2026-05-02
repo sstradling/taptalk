@@ -132,4 +132,28 @@ describe("integration: full happy-path round", () => {
     host.close();
     guest.close();
   });
+
+  it("create_room and join_room displayName override stale hello name", async () => {
+    const host = await connect("Player");
+    host.send({
+      type: "create_room",
+      v: 1,
+      displayName: "HostActual",
+      mode: "musical_chairs",
+      settings: { roundSeconds: 30, maxPlayers: 16 },
+    });
+    const hostState = await host.waitFor((m) => m.type === "room_state");
+    const roomCode: string = hostState.roomCode;
+    assert.ok(hostState.players.some((p: { displayName: string }) => p.displayName === "HostActual"));
+
+    const guest = await connect("Player");
+    guest.send({ type: "join_room", v: 1, displayName: "GuestActual", roomCode });
+    await guest.waitFor((m) => m.type === "room_state" && m.players.length === 2);
+    const guestState = guest.inbox.filter((m: { type: string }) => m.type === "room_state").pop();
+    assert.ok(guestState.players.some((p: { displayName: string }) => p.displayName === "HostActual"));
+    assert.ok(guestState.players.some((p: { displayName: string }) => p.displayName === "GuestActual"));
+
+    host.close();
+    guest.close();
+  });
 });

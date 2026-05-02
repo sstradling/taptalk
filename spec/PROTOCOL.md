@@ -60,13 +60,15 @@ client                                  server
 
 ### 5.2 `create_room`
 ```json
-{ "type": "create_room", "v": 1, "mode": "musical_chairs" | "poison_apple" | "scavenger_hunt", "settings": { "roundSeconds": 60, "maxPlayers": 16 } }
+{ "type": "create_room", "v": 1, "displayName": "Aleks", "mode": "musical_chairs" | "poison_apple" | "scavenger_hunt", "settings": { "roundSeconds": 60, "maxPlayers": 16 } }
 ```
+- `displayName` is optional for backward compatibility. When present, the server uses it as this player's roster label (and updates the session), so it can differ from an earlier `hello` if the client edited their name after connecting.
 
 ### 5.3 `join_room`
 ```json
-{ "type": "join_room", "v": 1, "roomCode": "BQRT" }
+{ "type": "join_room", "v": 1, "displayName": "Sam", "roomCode": "BQRT" }
 ```
+- `displayName` is optional for the same reason as `create_room`.
 
 ### 5.4 `leave_room`
 ```json
