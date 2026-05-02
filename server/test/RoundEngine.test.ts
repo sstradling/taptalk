@@ -23,10 +23,6 @@ function newEngine(mode: "musical_chairs" | "poison_apple" | "scavenger_hunt" = 
   return new RoundEngine({ mode, roundSeconds: 30, rng: new SeededRng(1) });
 }
 
-function uwbHit(peerToken: string) {
-  return [{ kind: "uwb" as const, peerToken, distanceM: 0.05, observedAtMs: 1000 }];
-}
-
 function pairedBumpTouch(peerToken: string, tHitMs = 1000) {
   return [
     { kind: "uwb" as const, peerToken, distanceM: 0.05, observedAtMs: tHitMs },

@@ -175,9 +175,6 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
             }
 
             if mag > Self.bumpThresholdG {
-                Task { @MainActor in
-                    self.onMotionHint?(nil)
-                }
                 let evidence = self.stateLock.locked {
                     guard now - self.lastBumpAtMs > 300 else { return nil as [EvidenceChannel]? }
                     self.lastBumpAtMs = now
@@ -199,10 +196,15 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
                         self.continuation.yield(ev)
                     }
                 }
-            } else if mag >= Self.tapHarderBandLowG && mag < Self.tapHarderBandHighG {
+                if mag > Self.calmDownThresholdG {
+                    self.maybeEmitMotionHint(now: now, message: "Calm down! Its just a game!")
+                } else {
+                    Task { @MainActor in
+                        self.onMotionHint?(nil)
+                    }
+                }
+            } else if mag >= Self.tapHarderBandLowG {
                 self.maybeEmitMotionHint(now: now, message: "Tap harder")
-            } else if mag > Self.calmDownThresholdG {
-                self.maybeEmitMotionHint(now: now, message: "Calm down! Its just a game!")
             }
         }
     }
