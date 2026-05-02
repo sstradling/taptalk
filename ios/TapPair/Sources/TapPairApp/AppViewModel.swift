@@ -230,8 +230,10 @@ public final class AppViewModel {
         let coalescer = EvidenceCoalescer { [weak self] batch in
             guard let self else { return }
             let (roundId, token) = await MainActor.run {
-                (self.state.lastAssignment?.roundId ?? self.state.room?.currentRoundId ?? 0,
-                 self.activeSelfToken ?? Self.generateRoundToken())
+                let kinds = batch.map { $0.kind.rawValue }.joined(separator: ",")
+                self.logDebug("evidence flush channels=\(batch.count) kinds=\(kinds)")
+                return (self.state.lastAssignment?.roundId ?? self.state.room?.currentRoundId ?? 0,
+                        self.activeSelfToken ?? Self.generateRoundToken())
             }
             try? await self.client.send(.pairEvidence(.init(
                 roundId: roundId,
@@ -323,14 +325,20 @@ public final class AppViewModel {
 
     private func startProviderForCurrentRoundIfNeeded() async {
         let roundId = state.lastAssignment?.roundId ?? state.room?.currentRoundId ?? 0
-        guard roundId > 0, activeProviderRoundId != roundId, let provider else { return }
+        guard roundId > 0, activeProviderRoundId != roundId, let provider else {
+            logDebug("provider start skipped roundId=\(state.lastAssignment?.roundId ?? state.room?.currentRoundId ?? 0) active=\(activeProviderRoundId ?? -1) hasProvider=\(self.provider != nil)")
+            return
+        }
         let token = Self.generateRoundToken()
         activeProviderRoundId = roundId
         activeSelfToken = token
+        logDebug("provider starting roundId=\(roundId) token=\(token.prefix(6))…")
         do {
             try await provider.start(roundId: roundId, selfToken: token)
+            logDebug("provider started roundId=\(roundId)")
         } catch {
             state.lastError = "Pairing start failed: \(error)"
+            logDebug("provider start failed error=\(error)")
         }
     }
 
