@@ -18,7 +18,12 @@ public final class CompositePairingProvider: PairingProvider, @unchecked Sendabl
     public let evidence: AsyncStream<EvidenceChannel>
     private let continuation: AsyncStream<EvidenceChannel>.Continuation
     private let children: [any PairingProvider]
+    /// Long-lived tasks that forward each child's evidence into our merged
+    /// stream. Created once during `start()` and kept alive across stop/start
+    /// cycles because the children's `AsyncStream` continuations survive
+    /// `stop()` — only scanning/motion I/O is paused.
     private var pumps: [Task<Void, Never>] = []
+    private var pumpsStarted = false
 
     public init(children: [any PairingProvider]) {
         self.children = children
@@ -28,21 +33,23 @@ public final class CompositePairingProvider: PairingProvider, @unchecked Sendabl
     }
 
     public func start(roundId: Int, selfToken: String) async throws {
-        // Pump every child's evidence into the merged stream.
+        if !pumpsStarted {
+            pumpsStarted = true
+            for child in children where child.isAvailable {
+                let stream = child.evidence
+                let cont = continuation
+                pumps.append(Task {
+                    for await ev in stream { cont.yield(ev) }
+                })
+            }
+        }
         for child in children where child.isAvailable {
-            let stream = child.evidence
-            let cont = continuation
-            pumps.append(Task {
-                for await ev in stream { cont.yield(ev) }
-            })
             try await child.start(roundId: roundId, selfToken: selfToken)
         }
     }
 
     public func stop() async {
         for child in children { await child.stop() }
-        for p in pumps { p.cancel() }
-        pumps = []
     }
 }
 #endif

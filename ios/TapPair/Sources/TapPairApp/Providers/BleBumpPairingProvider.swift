@@ -105,7 +105,7 @@ public final class BleBumpPairingProvider: NSObject, PairingProvider, @unchecked
     }
 
     private func startScanningIfReady() {
-        guard central.state == .poweredOn else { return }
+        guard central.state == .poweredOn, !central.isScanning else { return }
         central.scanForPeripherals(
             withServices: [Self.makeServiceUUID()],
             options: [CBCentralManagerScanOptionAllowDuplicatesKey: true]

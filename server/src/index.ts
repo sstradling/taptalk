@@ -119,6 +119,13 @@ export function createServer(port: number = PORT): { wss: WebSocketServer; lobby
           break;
         }
         case "broadcast_pair_confirmed": {
+          log.info("pair_confirmed", {
+            roomCode,
+            roundId: action.roundId,
+            a: action.a,
+            b: action.b,
+            elapsedMs: action.elapsedMs,
+          });
           const sa = sessionFor(action.a);
           const sb = sessionFor(action.b);
           if (sa) {
@@ -144,6 +151,12 @@ export function createServer(port: number = PORT): { wss: WebSocketServer; lobby
           break;
         }
         case "private_pair_rejected": {
+          log.info("pair_rejected", {
+            roomCode,
+            roundId: action.roundId,
+            playerId: action.playerId,
+            reason: action.reason,
+          });
           const s = sessionFor(action.playerId);
           if (s) {
             send(s.ws, {
@@ -304,6 +317,16 @@ export function createServer(port: number = PORT): { wss: WebSocketServer; lobby
       case "pair_evidence": {
         const where = lobby.roomFor(session.sessionId);
         if (!where) return;
+        log.info("pair_evidence detail", {
+          sessionId: session.sessionId,
+          roomCode: where.room.roomCode,
+          playerId: where.playerId,
+          roundId: parsed.roundId,
+          phase: parsed.phase,
+          selfToken: parsed.selfToken.slice(0, 6) + "…",
+          channelKinds: parsed.channels.map((c) => c.kind).join(","),
+          channelCount: parsed.channels.length,
+        });
         const actions = where.room.engine.submitEvidence(
           where.playerId,
           parsed.roundId,
