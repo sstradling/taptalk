@@ -60,13 +60,15 @@ client                                  server
 
 ### 5.2 `create_room`
 ```json
-{ "type": "create_room", "v": 1, "mode": "musical_chairs" | "poison_apple" | "scavenger_hunt", "settings": { "roundSeconds": 60, "maxPlayers": 16 } }
+{ "type": "create_room", "v": 1, "displayName": "Aleks", "mode": "musical_chairs" | "poison_apple" | "scavenger_hunt", "settings": { "roundSeconds": 60, "maxPlayers": 16 } }
 ```
+- `displayName` is optional for backward compatibility. When present, the server uses it as this player's roster label (and updates the session), so it can differ from an earlier `hello` if the client edited their name after connecting.
 
 ### 5.3 `join_room`
 ```json
-{ "type": "join_room", "v": 1, "roomCode": "BQRT" }
+{ "type": "join_room", "v": 1, "displayName": "Sam", "roomCode": "BQRT" }
 ```
+- `displayName` is optional for the same reason as `create_room`.
 
 ### 5.4 `leave_room`
 ```json
@@ -206,10 +208,13 @@ Within a 750 ms window the server collects all `pair_evidence` messages from all
 ```
 score(A,B) =
    3.0 * I(A and B each report a bump within ±200 ms of each other)
- + 2.0 * I(A reports BLE seeing B.selfToken AND/OR vice versa, with RSSI > -55 dBm)
+ + 2.0 * I(A reports BLE seeing B.selfToken with RSSI > -55 dBm)
+ + 2.0 * I(B reports BLE seeing A.selfToken with RSSI > -55 dBm)
  + 4.0 * I(A reports UWB distance to B.selfToken < 0.20 m AND/OR vice versa)
  + 2.0 * I(A reports hearing B's chirp AND/OR vice versa, SNR > 10 dB)
 ```
+
+For BLE, each direction that sees the assigned peer’s `selfToken` with RSSI > -55 dBm contributes **2.0** (so a mutual sighting in a single scoring window contributes **4.0** total).
 
 A pair is considered *touched* if `score >= 4.0`. The server then:
 
@@ -217,7 +222,7 @@ A pair is considered *touched* if `score >= 4.0`. The server then:
 2. If the touched pair matches the assigned pair for the round, emits `pair_confirmed` to both.
 3. Otherwise emits `pair_rejected` privately to both, and removes their evidence from this window so they can re-tap.
 
-Rationale: any single channel can be spoofed or noisy. Requiring score >= 4.0 means at least UWB alone, OR BLE + bump, OR BLE + audio, OR bump + audio. This keeps the SE 2 (no UWB) playable while making UWB devices have a single-channel "magic" path.
+Rationale: any single channel can be spoofed or noisy. Requiring score >= 4.0 means at least UWB alone, OR **mutual** BLE proximity (both phones saw each other’s token), OR one-sided BLE plus bump/audio, OR bump + audio. This keeps the SE 2 (no UWB) playable while making UWB devices have a single-channel "magic" path.
 
 ## 8. Versioning
 

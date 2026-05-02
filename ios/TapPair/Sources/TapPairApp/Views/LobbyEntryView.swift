@@ -14,11 +14,11 @@ struct LobbyEntryView: View {
     @State private var showSettings = false
 
     var body: some View {
-        @Bindable var vmBinding = vm
+        @Bindable var bindable = vm
         Form {
             connectionSection
             Section("You") {
-                TextField("Display name", text: $vmBinding.displayName)
+                TextField("Display name", text: $bindable.displayName)
                     .textInputAutocapitalization(.words)
             }
             Section("Start a game") {

@@ -181,14 +181,24 @@ public enum ClientMessage: Codable, Equatable, Sendable {
     }
 
     public struct CreateRoom: Codable, Equatable, Sendable {
+        /// Sent so the server uses the name on the wire at room entry (may differ from an earlier `hello`).
+        public var displayName: String?
         public var mode: GameMode
         public var settings: RoomSettings
-        public init(mode: GameMode, settings: RoomSettings) { self.mode = mode; self.settings = settings }
+        public init(displayName: String? = nil, mode: GameMode, settings: RoomSettings) {
+            self.displayName = displayName
+            self.mode = mode
+            self.settings = settings
+        }
     }
 
     public struct JoinRoom: Codable, Equatable, Sendable {
+        public var displayName: String?
         public var roomCode: String
-        public init(roomCode: String) { self.roomCode = roomCode }
+        public init(displayName: String? = nil, roomCode: String) {
+            self.displayName = displayName
+            self.roomCode = roomCode
+        }
     }
 
     public struct PairEvidence: Codable, Equatable, Sendable {
@@ -218,10 +228,12 @@ public enum ClientMessage: Codable, Equatable, Sendable {
             try c.encode(h.capabilities, forKey: GenericKey("capabilities"))
         case .createRoom(let cr):
             try c.encode("create_room", forKey: GenericKey("type"))
+            try c.encodeIfPresent(cr.displayName, forKey: GenericKey("displayName"))
             try c.encode(cr.mode, forKey: GenericKey("mode"))
             try c.encode(cr.settings, forKey: GenericKey("settings"))
         case .joinRoom(let jr):
             try c.encode("join_room", forKey: GenericKey("type"))
+            try c.encodeIfPresent(jr.displayName, forKey: GenericKey("displayName"))
             try c.encode(jr.roomCode, forKey: GenericKey("roomCode"))
         case .leaveRoom:
             try c.encode("leave_room", forKey: GenericKey("type"))
@@ -262,11 +274,15 @@ public enum ClientMessage: Codable, Equatable, Sendable {
             ))
         case "create_room":
             self = .createRoom(.init(
+                displayName: try c.decodeIfPresent(String.self, forKey: GenericKey("displayName")),
                 mode: try c.decode(GameMode.self, forKey: GenericKey("mode")),
                 settings: try c.decode(RoomSettings.self, forKey: GenericKey("settings"))
             ))
         case "join_room":
-            self = .joinRoom(.init(roomCode: try c.decode(String.self, forKey: GenericKey("roomCode"))))
+            self = .joinRoom(.init(
+                displayName: try c.decodeIfPresent(String.self, forKey: GenericKey("displayName")),
+                roomCode: try c.decode(String.self, forKey: GenericKey("roomCode"))
+            ))
         case "leave_room": self = .leaveRoom
         case "ready": self = .ready(try c.decode(Bool.self, forKey: GenericKey("ready")))
         case "start_round": self = .startRound

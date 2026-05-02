@@ -122,4 +122,11 @@ describe("RoundEngine", () => {
     e.tick(20_000);
     assert.equal(e.phase, "finding");
   });
+
+  it("setDisplayName updates roster label", () => {
+    const e = newEngine();
+    e.addPlayer({ playerId: "p1", displayName: "First" });
+    e.setDisplayName("p1", "Second");
+    assert.equal(e.allPlayers().find((p) => p.playerId === "p1")?.displayName, "Second");
+  });
 });
