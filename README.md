@@ -8,7 +8,8 @@ short tasks). Modes include musical chairs, poison apple, and scavenger hunt.
 This repo contains the phase-0 prototype:
 
 - **`spec/`** — wire protocol and architecture documents that pin down the
-  server/client contract.
+  server/client contract, plus `PRIOR_ART.md` (survey of similar apps and how
+  TapPair's mechanic differs).
 - **`server/`** — Node + TypeScript WebSocket server: lobby manager, round
   state machine, evidence matcher.
 - **`ios/TapPair/`** — iOS 17+ SwiftUI app:
@@ -26,6 +27,8 @@ This repo contains the phase-0 prototype:
 3. `PLAN.md` — sequenced work, exit criteria, risks.
 4. `server/src/EvidenceMatcher.ts` — the algorithm that decides "who touched
    whom" from raw sensor reports.
+5. `spec/PRIOR_ART.md` — how existing party/proximity apps compare, and where
+   TapPair sits relative to them.
 
 ## Running the server
 
